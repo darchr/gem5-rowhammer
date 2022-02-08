@@ -286,6 +286,24 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
     return std::make_pair(selected_pkt_it, selected_col_at);
 }
 
+
+void
+DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
+{
+    //AYAZ:
+
+    if (row != 0) {
+        bank_ref.rhTriggers[row-1]++;
+    }
+
+    // just to check my assumption that row numbers always start from 0
+    assert(row != rowsPerBank);
+    if (row != (rowsPerBank-1)) {
+        bank_ref.rhTriggers[row+1]++;
+    }
+
+}
+
 void
 DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                        Tick act_tick, uint32_t row)
@@ -305,6 +323,8 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
     bank_ref.openRow = row;
+
+    updateVictims(bank_ref, row);
 
     // start counting anew, this covers both the case when we
     // auto-precharged, and when this access is forced to
@@ -752,6 +772,7 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       burstInterleave(tBURST != tBURST_MIN),
       twoCycleActivate(_p.two_cycle_activate),
       activationLimit(_p.activation_limit),
+      rowhammerThreshold(_p.rowhammer_threshold),
       wrToRdDlySameBG(tCL + _p.tBURST_MAX + _p.tWTR_L),
       rdToWrDlySameBG(_p.tRTW + _p.tBURST_MAX),
       pageMgmt(_p.page_policy),
@@ -1143,6 +1164,10 @@ DRAMInterface::Rank::Rank(const DRAMInterfaceParams &_p,
 {
     for (int b = 0; b < _p.banks_per_rank; b++) {
         banks[b].bank = b;
+
+        // AYAZ: Also initialize the rowhammer activates vector
+        banks[b].rhTriggers.resize(dram.rowsPerBank,0);
+
         // GDDR addressing of banks to BG is linear.
         // Here we assume that all DRAM generations address bank groups as
         // follows:

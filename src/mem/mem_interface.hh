@@ -104,6 +104,8 @@ class MemInterface : public AbstractMemory
         uint32_t rowAccesses;
         uint32_t bytesAccessed;
 
+        std::vector<long int> rhTriggers;
+
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
@@ -757,6 +759,8 @@ class DRAMInterface : public MemInterface
     const Tick wrToRdDlySameBG;
     const Tick rdToWrDlySameBG;
 
+    //AYAZ: Rowhammer activation threshold
+    const uint32_t rowhammerThreshold;
 
     enums::PageManage pageMgmt;
     /**
@@ -790,6 +794,15 @@ class DRAMInterface : public MemInterface
      */
     void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
                       uint32_t row);
+
+    /**
+     * Keep track of possible corruption in neighbouring rows
+     *
+     * @param bank_ref Reference to the bank
+     * @param row Index of the row
+     */
+    void updateVictims(Bank& bank_ref, uint32_t row);
+
 
     /**
      * Precharge a given bank and also update when the precharge is
