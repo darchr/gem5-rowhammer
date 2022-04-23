@@ -376,7 +376,7 @@ tracePacket(System *sys, const char *label, PacketPtr pkt)
 #endif
 
 void
-AbstractMemory::access(PacketPtr pkt)
+AbstractMemory::access(PacketPtr pkt, bool corrupted)
 {
     if (pkt->cacheResponding()) {
         DPRINTF(MemoryAccess, "Cache responding to %#llx: not responding\n",
@@ -443,7 +443,11 @@ AbstractMemory::access(PacketPtr pkt)
             trackLoadLocked(pkt);
         }
         if (pmemAddr) {
-            pkt->setData(host_addr);
+            if (corrupted) {
+                pkt->setCorruptedData(host_addr);
+            } else {
+                pkt->setData(host_addr);
+            }
         }
         TRACE_PACKET(pkt->req->isInstFetch() ? "IFetch" : "Read");
         stats.numReads[pkt->req->requestorId()]++;

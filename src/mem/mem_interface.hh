@@ -105,6 +105,9 @@ class MemInterface : public AbstractMemory
         uint32_t bytesAccessed;
 
         std::vector<long int> rhTriggers;
+        // The assumption is that the number of columns in a row
+        // will not be larger than number of bits in long int
+        std::vector<long int> weakColumns;
 
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
@@ -762,6 +765,9 @@ class DRAMInterface : public MemInterface
     //AYAZ: Rowhammer activation threshold
     const uint32_t rowhammerThreshold;
 
+    //AYAZ: Rowhammer refresh counter
+    int refreshCounter = 0;
+
     enums::PageManage pageMgmt;
     /**
      * Max column accesses (read and write) per row, before forefully
@@ -802,6 +808,15 @@ class DRAMInterface : public MemInterface
      * @param row Index of the row
      */
     void updateVictims(Bank& bank_ref, uint32_t row);
+
+    /**
+     * Check if the current access is
+     * going to lead to corrupted data
+     * @param bank_ref Reference to the bank
+     * @param row Index of the row
+     * @param col index of the column in the row
+     */
+    void checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt);
 
 
     /**

@@ -97,6 +97,7 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     // use a 64-bit unsigned during the computations as the row is
     // always the top bits, and check before creating the packet
     uint64_t row;
+    uint64_t col;
 
     // Get packed address, starting at 0
     Addr addr = getCtrlAddr(pkt_addr);
@@ -110,6 +111,7 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     if (addrMapping == enums::RoRaBaChCo || addrMapping == enums::RoRaBaCoCh) {
         // the lowest order bits denote the column to ensure that
         // sequential cache lines occupy the same row
+        col = addr % burstsPerRowBuffer;
         addr = addr / burstsPerRowBuffer;
 
         // after the channel bits, get the bank bits to interleave
@@ -129,9 +131,11 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
         // interleaving granularity greater than row buffer
         if (burstsPerStripe > burstsPerRowBuffer) {
             // remove column bits which are a subset of burstsPerStripe
+            col = addr % burstsPerRowBuffer;
             addr = addr / burstsPerRowBuffer;
         } else {
             // remove lower column bits below channel bits
+            col = addr % burstsPerStripe;
             addr = addr / burstsPerStripe;
         }
 
@@ -158,6 +162,7 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     assert(bank < banksPerRank);
     assert(row < rowsPerBank);
     assert(row < Bank::NO_ROW);
+    assert(col < burstsPerRowBuffer);
 
     DPRINTF(DRAM, "Address: %#x Rank %d Bank %d Row %d\n",
             pkt_addr, rank, bank, row);
@@ -167,7 +172,7 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     // later
     uint16_t bank_id = banksPerRank * rank + bank;
 
-    return new MemPacket(pkt, is_read, is_dram, rank, bank, row, bank_id,
+    return new MemPacket(pkt, is_read, is_dram, rank, bank, row, col, bank_id,
                    pkt_addr, size);
 }
 
@@ -286,6 +291,25 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
     return std::make_pair(selected_pkt_it, selected_col_at);
 }
 
+void
+checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
+{
+    if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
+        mem_pkt->corruptedRow = true;
+
+        // Also, need to figure out if the accessed
+        // column is flippable or not, and if it has
+        // previously been flipped
+        // also reset the trigger counter (by looking at weakColumns)
+
+        // If this access is turned out to be corrupted, we will
+        // reset that bit in the weakColumns, so that the future
+        // accesses of the column will not induce a bit flip
+
+
+        bank_ref.rhTriggers[mem_pkt->row] = 0;
+    }
+}
 
 void
 DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
@@ -302,6 +326,13 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
         bank_ref.rhTriggers[row+1]++;
     }
 
+    // making sure that the activated row has its counter
+    // set to 0, only in case if it has not already been corrupted
+    // once we return flipped data, we can reset the rhTriggers for that
+    // row to restart the flipping cycle
+    if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+        bank_ref.rhTriggers[row] = 0;
+    }
 }
 
 void
@@ -735,6 +766,12 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
         stats.perBankWrBursts[mem_pkt->bankId]++;
 
     }
+
+    // AYAZ: Before returning, make sure that we update the pkt to indicate
+    // that the row is corrupted or not
+
+    checkRowHammer(bank_ref, mem_pkt);
+
     // Update bus state to reflect when previous command was issued
     return std::make_pair(cmd_at, cmd_at + burst_gap);
 }
@@ -772,9 +809,9 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       burstInterleave(tBURST != tBURST_MIN),
       twoCycleActivate(_p.two_cycle_activate),
       activationLimit(_p.activation_limit),
-      rowhammerThreshold(_p.rowhammer_threshold),
       wrToRdDlySameBG(tCL + _p.tBURST_MAX + _p.tWTR_L),
       rdToWrDlySameBG(_p.tRTW + _p.tBURST_MAX),
+      rowhammerThreshold(_p.rowhammer_threshold),
       pageMgmt(_p.page_policy),
       maxAccessesPerRow(_p.max_accesses_per_row),
       timeStampOffset(0), activeRank(0),
@@ -1476,6 +1513,33 @@ DRAMInterface::Rank::processRefreshEvent()
         assert(pwrState == PWR_REF);
 
         assert(!powerEvent.scheduled());
+
+        // AYAZ: this is the point where the current
+        // refresh is done, so we should be able to
+        // check how many refreshes are done so far
+        // and if the total refreshes has has gone
+        // through an entire cycle (8192 for DDR4),
+        // I think at that point all the trigger
+        // counters can be reset to 0?
+        // we can also implement a simple distributed
+        // refresh scheme as well. But, I think it is ok
+        // to reset things after 8192 refreshes as well.
+
+        // increment the refresh counter
+        dram.refreshCounter++;
+
+        if (dram.refreshCounter == 8192) {
+
+            // reset the threshold counters
+            for (auto &b : banks) {
+                for (int row_index = 0; row_index < dram.rowsPerBank;
+                    row_index++) {
+                    b.rhTriggers[row_index] = 0;
+                }
+            }
+        }
+
+
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {

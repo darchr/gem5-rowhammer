@@ -1264,6 +1264,33 @@ class Packet : public Printable
     }
 
     /**
+     * Copy corrupted data into the packet from the provided pointer.
+     */
+    void
+    setCorruptedData(uint8_t *p)
+    {
+        // we should never be copying data onto itself, which means we
+        // must idenfity packets with static data, as they carry the
+        // same pointer from source to destination and back
+        assert(p != getPtr<uint8_t>() || flags.isSet(STATIC_DATA));
+
+        if (p != getPtr<uint8_t>()) {
+            // for packet with allocated dynamic data, we copy data from
+            // one to the other, e.g. a forwarded response to a response
+
+            long long *buffer = new long long;
+
+            std::memcpy(buffer, p, getSize());
+
+            *buffer = *buffer + 1;
+
+            std::memcpy(p, buffer, getSize());
+
+            std::memcpy(getPtr<uint8_t>(), p, getSize());
+        }
+    }
+
+    /**
      * Copy data into the packet from the provided block pointer,
      * which is aligned to the given block size.
      */

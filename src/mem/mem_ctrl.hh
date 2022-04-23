@@ -98,6 +98,14 @@ class MemPacket
 {
   public:
 
+    // AYAZ: For rowhammer stuff
+    // this is to indicate that the mem_pkt
+    // is accessing a column in a row which
+    // has flip bits
+    // the actual column in that row which should be flipped?
+    // we can randomly pick that column!
+    bool corruptedRow = false;
+
     /** When did request enter the controller */
     const Tick entryTime;
 
@@ -119,6 +127,7 @@ class MemPacket
     const uint8_t rank;
     const uint8_t bank;
     const uint32_t row;
+    const uint32_t col;
 
     /**
      * Bank id is calculated considering banks in all the ranks
@@ -200,12 +209,13 @@ class MemPacket
     inline bool isDram() const { return dram; }
 
     MemPacket(PacketPtr _pkt, bool is_read, bool is_dram, uint8_t _rank,
-               uint8_t _bank, uint32_t _row, uint16_t bank_id, Addr _addr,
-               unsigned int _size)
+               uint8_t _bank, uint32_t _row, uint32_t _col, uint16_t bank_id,
+               Addr _addr, unsigned int _size)
         : entryTime(curTick()), readyTime(curTick()), pkt(_pkt),
           _requestorId(pkt->requestorId()),
           read(is_read), dram(is_dram), rank(_rank), bank(_bank), row(_row),
-          bankId(bank_id), addr(_addr), size(_size), burstHelper(NULL),
+          col(_col), bankId(bank_id), addr(_addr), size(_size),
+          burstHelper(NULL),
           _qosValue(_pkt->qosValue())
     { }
 
@@ -362,7 +372,8 @@ class MemCtrl : public qos::MemCtrl
      * @param pkt The packet from the outside world
      * @param static_latency Static latency to add before sending the packet
      */
-    void accessAndRespond(PacketPtr pkt, Tick static_latency);
+    void accessAndRespond(PacketPtr pkt, Tick static_latency,
+                                            bool corruptedRow);
 
     /**
      * Determine if there is a packet that can issue.

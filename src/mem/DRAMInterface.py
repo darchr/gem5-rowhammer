@@ -51,6 +51,10 @@ class DRAMInterface(MemInterface):
     cxx_header = "mem/mem_interface.hh"
     cxx_class = 'gem5::memory::DRAMInterface'
 
+    # This number is 50K for DDR4 and around 139K for DDR3
+    rowhammer_threshold = Param.Unsigned(50000, "Number of activates which "\
+                                            "trigger rowhammer")
+
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")
 

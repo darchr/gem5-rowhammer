@@ -135,7 +135,7 @@ MemCtrl::recvAtomic(PacketPtr pkt)
     Tick latency = 0;
     // do the actual memory access and turn the packet into a response
     if (dram && dram->getAddrRange().contains(pkt->getAddr())) {
-        dram->access(pkt);
+        dram->access(pkt, false);
 
         if (pkt->hasData()) {
             // this value is not supposed to be accurate, just enough to
@@ -143,7 +143,7 @@ MemCtrl::recvAtomic(PacketPtr pkt)
             latency = dram->accessLatency();
         }
     } else if (nvm && nvm->getAddrRange().contains(pkt->getAddr())) {
-        nvm->access(pkt);
+        nvm->access(pkt, false);
 
         if (pkt->hasData()) {
             // this value is not supposed to be accurate, just enough to
@@ -296,7 +296,7 @@ MemCtrl::addToReadQueue(PacketPtr pkt, unsigned int pkt_count, bool is_dram)
 
     // If all packets are serviced by write queue, we send the repsonse back
     if (pktsServicedByWrQ == pkt_count) {
-        accessAndRespond(pkt, frontendLatency);
+        accessAndRespond(pkt, frontendLatency, false);
         return;
     }
 
@@ -383,7 +383,7 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count, bool is_dram)
     // snoop the write queue for any upcoming reads
     // @todo, if a pkt size is larger than burst size, we might need a
     // different front end latency
-    accessAndRespond(pkt, frontendLatency);
+    accessAndRespond(pkt, frontendLatency, false);
 
     // If we are not already scheduled to get a request out of the
     // queue, do so now
@@ -517,13 +517,15 @@ MemCtrl::processRespondEvent()
             // so we can now respond to the requestor
             // @todo we probably want to have a different front end and back
             // end latency for split packets
-            accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency);
+            accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
+                            mem_pkt->corruptedRow);
             delete mem_pkt->burstHelper;
             mem_pkt->burstHelper = NULL;
         }
     } else {
         // it is not a split packet
-        accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency);
+        accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
+                        mem_pkt->corruptedRow);
     }
 
     respQueue.pop_front();
@@ -636,17 +638,26 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay)
 }
 
 void
-MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
+MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
+                                            bool corruptedRow)
 {
     DPRINTF(MemCtrl, "Responding to Address %#x.. \n", pkt->getAddr());
 
     bool needsResponse = pkt->needsResponse();
     // do the actual memory access which also turns the packet into a
     // response
+    // AYAZ: Also, need to keep track if this column has already been
+    // flipped or not
     if (dram && dram->getAddrRange().contains(pkt->getAddr())) {
-        dram->access(pkt);
+
+        if (corruptedRow) {
+            dram->access(pkt, true);
+        } else {
+            dram->access(pkt, false);
+        }
+
     } else if (nvm && nvm->getAddrRange().contains(pkt->getAddr())) {
-        nvm->access(pkt);
+        nvm->access(pkt, false);
     } else {
         panic("Can't handle address range for packet %s\n",
               pkt->print());
