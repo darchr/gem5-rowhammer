@@ -104,7 +104,7 @@ class MemPacket
     // has flip bits
     // the actual column in that row which should be flipped?
     // we can randomly pick that column!
-    bool corruptedRow = false;
+    bool corruptedAccess = false;
 
     /** When did request enter the controller */
     const Tick entryTime;

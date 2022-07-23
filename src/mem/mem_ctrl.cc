@@ -518,14 +518,14 @@ MemCtrl::processRespondEvent()
             // @todo we probably want to have a different front end and back
             // end latency for split packets
             accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
-                            mem_pkt->corruptedRow);
+                            mem_pkt->corruptedAccess);
             delete mem_pkt->burstHelper;
             mem_pkt->burstHelper = NULL;
         }
     } else {
         // it is not a split packet
         accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
-                        mem_pkt->corruptedRow);
+                        mem_pkt->corruptedAccess);
     }
 
     respQueue.pop_front();
@@ -639,7 +639,7 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay)
 
 void
 MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
-                                            bool corruptedRow)
+                                            bool corruptedAccess)
 {
     DPRINTF(MemCtrl, "Responding to Address %#x.. \n", pkt->getAddr());
 
@@ -650,8 +650,11 @@ MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
     // flipped or not
     if (dram && dram->getAddrRange().contains(pkt->getAddr())) {
 
-        if (corruptedRow) {
+        if (corruptedAccess) {
+            std::cout << "Corrupted Access : Address : " << pkt->getAddr()  << std::endl;
             dram->access(pkt, true);
+            assert(pkt->hasData());
+            std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;
         } else {
             dram->access(pkt, false);
         }

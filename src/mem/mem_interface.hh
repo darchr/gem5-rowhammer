@@ -107,12 +107,14 @@ class MemInterface : public AbstractMemory
         std::vector<long int> rhTriggers;
         // The assumption is that the number of columns in a row
         // will not be larger than number of bits in long int
+        // and every bit will point out if that particular column
+        // is flippable or not
         std::vector<long int> weakColumns;
 
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
-            rowAccesses(0), bytesAccessed(0)
+            rowAccesses(0), bytesAccessed(0), rhTriggers(0), weakColumns(0)
         { }
     };
 

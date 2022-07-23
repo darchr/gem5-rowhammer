@@ -111,6 +111,8 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     if (addrMapping == enums::RoRaBaChCo || addrMapping == enums::RoRaBaCoCh) {
         // the lowest order bits denote the column to ensure that
         // sequential cache lines occupy the same row
+        // right this col donates to a combination of columns which together
+        // make a single burst/atom
         col = addr % burstsPerRowBuffer;
         addr = addr / burstsPerRowBuffer;
 
@@ -292,10 +294,9 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
 }
 
 void
-checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
+DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
     if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
-        mem_pkt->corruptedRow = true;
 
         // Also, need to figure out if the accessed
         // column is flippable or not, and if it has
@@ -306,6 +307,10 @@ checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // reset that bit in the weakColumns, so that the future
         // accesses of the column will not induce a bit flip
 
+        if (bits(bank_ref.weakColumns[mem_pkt->row], mem_pkt->col) == 1) {
+            mem_pkt->corruptedAccess = true;
+            replaceBits(bank_ref.weakColumns[mem_pkt->row], mem_pkt->col, mem_pkt->col, 0);
+        }
 
         bank_ref.rhTriggers[mem_pkt->row] = 0;
     }
@@ -315,6 +320,8 @@ void
 DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
 {
     //AYAZ:
+
+    //std::cout << "UV : " << bank_ref.bank << "rhTriggers size " << bank_ref.rhTriggers.size() << std::endl;
 
     if (row != 0) {
         bank_ref.rhTriggers[row-1]++;
@@ -531,6 +538,12 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 
     // get the bank
     Bank& bank_ref = rank_ref.banks[mem_pkt->bank];
+
+    if (mem_pkt->row != 0) {
+        DPRINTF(DRAM, "Rhammer triggers  %ld Previous row %ld \n", bank_ref.rhTriggers[mem_pkt->row], bank_ref.rhTriggers[(mem_pkt->row)-1]);}
+    else {
+        DPRINTF(DRAM, "Rhammer triggers  %ld \n", bank_ref.rhTriggers[mem_pkt->row]);
+    }
 
     // for the state we need to track if it is a row hit or not
     bool row_hit = true;
@@ -854,6 +867,17 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
             rowBufferSize, burstsPerRowBuffer);
 
     rowsPerBank = capacity / (rowBufferSize * banksPerRank * ranksPerChannel);
+
+    for (int r = 0; r < ranksPerChannel; r++) {
+        for (int b = 0; b < ranks[r]->banks.size(); b++)
+            {
+                // AYAZ: Also initialize the rowhammer activates vector
+                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
+                // AYAZ: initializing every column with flip bit set
+                ranks[r]->banks[b].weakColumns.resize(rowsPerBank, 0xFFFFFFFF);
+                //std::cout << "banks : " << banks[b].bank << "rhTriggers size " << banks[b].rhTriggers.size() << std::endl;
+            }
+    }
 
     // some basic sanity checks
     if (tREFI <= tRP || tREFI <= tRFC) {
@@ -1201,9 +1225,6 @@ DRAMInterface::Rank::Rank(const DRAMInterfaceParams &_p,
 {
     for (int b = 0; b < _p.banks_per_rank; b++) {
         banks[b].bank = b;
-
-        // AYAZ: Also initialize the rowhammer activates vector
-        banks[b].rhTriggers.resize(dram.rowsPerBank,0);
 
         // GDDR addressing of banks to BG is linear.
         // Here we assume that all DRAM generations address bank groups as
