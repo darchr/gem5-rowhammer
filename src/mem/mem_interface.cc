@@ -49,6 +49,9 @@
 #include "debug/NVM.hh"
 #include "sim/system.hh"
 
+// Including RowHammer.hh for debugging
+#include "debug/RowHammer.hh"
+
 namespace gem5
 {
 
@@ -296,6 +299,7 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
 void
 DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
+    
     if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
 
         // Also, need to figure out if the accessed
@@ -357,6 +361,121 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         act_at = ctrl->verifySingleCmd(act_tick, maxCommandsPerWindow);
 
     DPRINTF(DRAM, "Activate at tick %d\n", act_at);
+
+    // kg: We use the trr_table here for this bank.
+    // 0 -> rank
+    // 1 -> bank
+    // 2 -> row
+    // 3 -> counter
+
+    bool found_flag = false;
+
+    for(int i = 0; i < std::max(counterTableLength, bank_ref.entries); i++) {
+        // found this addr
+        if(bank_ref.trr_table[i][0] == rank_ref.rank &&
+            bank_ref.trr_table[i][1] == bank_ref.bank &&
+            bank_ref.trr_table[i][2] == row) {
+                // TODO: Need to check whether this row is open.
+                // I guess activateBank does not require this.
+                found_flag = true;
+                bank_ref.trr_table[i][3]++;
+                break;
+            }
+    }
+
+    // If the row is not found
+    if(!found_flag) {
+        // We have a row which is not in the TRR table. But we don't know if we
+        // want to put this row in the table or not.
+        // UTRR does not discuss this.
+
+        // We use a small companion counter table, which acts liek a buffer to
+        // insert new rows. Rows gets replaced here.
+
+        uint8_t companion_idx = 0;
+
+        bool companion_found_flag = false;
+        for (int i = 1 ; i < std :: max(companionTableLength,
+            bank_ref.companion_entries); i++) {
+                // found this address in the companion table.
+        if(bank_ref.companion_table[i][0] == rank_ref.rank &&
+            bank_ref.companion_table[i][1] == bank_ref.bank &&
+            bank_ref.companion_table[i][2] == row) {
+                companion_found_flag = true;
+                bank_ref.companion_table[i][3]++;
+                break;
+            }
+        }
+
+        if(!companion_found_flag) {
+            // If we did not find this row in the companion table, then we make
+            // a new entry for this row in the companion table.
+            
+            uint8_t idx = 0;
+            
+            // There is space in the companion table for a new row.
+
+            if(bank_ref.companion_entries < companionTableLength) {
+                idx = bank_ref.companion_entries;
+                bank_ref.companion_entries += 1;
+            }
+            else {
+                for (int i = 0; i < companionTableLength ; i++) {
+                    if (bank_ref.companion_table[idx][3] >
+                            bank_ref.companion_table[i][3])
+                        idx = i;
+                }
+            }
+
+            bank_ref.companion_table[idx][0] = rank_ref.rank;
+            bank_ref.companion_table[idx][1] = bank_ref.bank;
+            bank_ref.companion_table[idx][2] = row;
+            bank_ref.companion_table[idx][1] = 1;
+        }
+        else {
+            // found this row. We now have to decide whether we promote this
+            // row to the trr_table or we just continue with our experiments
+            // This row has more acts than the threshold
+
+            if (bank_ref.companion_table[companion_idx][3]
+                    > companionThreshold) {
+                // We insert this row in the trr_table
+                // is there space?
+                // kg: Find out if there is space in the TRR table for a new
+                // row insertion
+                uint8_t idx = 0;
+                
+                // There is space in the companion table for a new row.
+
+                if(bank_ref.entries < counterTableLength) {
+                    idx = bank_ref.entries;
+                    bank_ref.entries += 1;
+                }
+                else {
+                    for (int i = 0; i < counterTableLength ; i++) {
+                        if (bank_ref.trr_table[idx][3] >
+                                bank_ref.trr_table[i][3])
+                            idx = i;
+                    }
+                }
+                bank_ref.trr_table[idx][0] = 
+                        bank_ref.companion_table[companion_idx][0];
+                bank_ref.trr_table[idx][1] = 
+                        bank_ref.companion_table[companion_idx][1];
+                bank_ref.trr_table[idx][2] = 
+                        bank_ref.companion_table[companion_idx][2];
+                bank_ref.trr_table[idx][1] =
+                        bank_ref.companion_table[companion_idx][3];
+            }
+
+        }
+        
+    }
+
+    DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d, "
+            "Companion Entries %d\n", rank_ref.rank, bank_ref.bank, row,
+            bank_ref.entries, bank_ref.companion_entries);
+
 
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
@@ -825,6 +944,11 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       wrToRdDlySameBG(tCL + _p.tBURST_MAX + _p.tWTR_L),
       rdToWrDlySameBG(_p.tRTW + _p.tBURST_MAX),
       rowhammerThreshold(_p.rowhammer_threshold),
+      counterTableLength(_p.counter_table_length),
+      trrVariant(_p.trr_variant),
+      trrThreshold(_p.trr_threshold),
+      companionTableLength(_p.companion_table_length),
+      companionThreshold(_p.companion_threshold),
       pageMgmt(_p.page_policy),
       maxAccessesPerRow(_p.max_accesses_per_row),
       timeStampOffset(0), activeRank(0),
@@ -1549,16 +1673,92 @@ DRAMInterface::Rank::processRefreshEvent()
         // increment the refresh counter
         dram.refreshCounter++;
 
-        if (dram.refreshCounter == 8192) {
+        int num_neighbor_rows = 0;
+        switch(dram.trrVariant) {
+            case 0:
+                // TRR variant A always picks exactly 1 row with the
+                // highest activation count.
+                num_neighbor_rows = 1;
 
-            // reset the threshold counters
-            for (auto &b : banks) {
-                for (int row_index = 0; row_index < dram.rowsPerBank;
-                    row_index++) {
-                    b.rhTriggers[row_index] = 0;
+            case 1:
+
+                // Number of neighboring rows is the a little confusing for
+                // this version of the code.
+                if(num_neighbor_rows == 0)
+                    num_neighbor_rows = 2;
+            case 3:
+                if(num_neighbor_rows == 0)
+                    num_neighbor_rows = 1;
+            case 6:
+                // ensure that the number of rows to be refreshed is not 0
+
+                assert(num_neighbor_rows != 0);
+
+                if (dram.refreshCounter % 9 == 0) {
+                    // We need to traver all the TRR tables per bank to find
+                    // out which row to refresh.
+
+                    // We iterate over all the tables of each bank
+                    for(auto &b: banks) {
+                        int max_idx = 0;
+                        for(int i = 0 ; i < dram.counterTableLength ; i++) {
+                            // all refresh
+                            if(b.trr_table[i][3] > dram.trrThreshold &&
+                                b.trr_table[max_idx][3] < b.trr_table[i][3])
+                                max_idx = i;
+                        }
+                        // found an entry with more than threshold number of
+                        // activates.
+                        b.trr_table[max_idx][3] = 0;
+                        dram.num_trr_refreshes += 2 * num_neighbor_rows;
+
+                        DPRINTF(RowHammer, "Inhibitor triggered refresh "
+                                        "in bank %d, trr_table idx %d. Total "
+                                        " TRR triggered refreshes %lld\n",
+                                        b.bank, max_idx,
+                                        dram.num_trr_refreshes);
+                    }
                 }
-            }
+                break;
+
+            case 2:
+                if (dram.refreshCounter % 4 == 0) {
+
+                }
+                break;
+
+            case 4:
+                if (dram.refreshCounter % 2 == 0) {
+
+                }
+                break;
+
+            case 5:
+                if (dram.refreshCounter % 17 == 0) {
+
+                }
+                break;
+
+            case 7:
+                if (dram.refreshCounter % 8 == 0) {
+
+                }
+                break;
+            default:
+                fatal("Unknown trr variant!");
         }
+
+
+        // if (dram.refreshCounter == 8192) {
+
+        //     // reset the threshold counters
+        //     for (auto &b : banks) {
+        //         for (int row_index = 0; row_index < dram.rowsPerBank;
+        //             row_index++) {
+        //             b.rhTriggers[row_index] = 0;
+        //         }
+        //     }
+        // }
 
 
 

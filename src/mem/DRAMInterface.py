@@ -54,6 +54,22 @@ class DRAMInterface(MemInterface):
     # This number is 50K for DDR4 and around 139K for DDR3
     rowhammer_threshold = Param.Unsigned(50000, "Number of activates which "\
                                             "trigger rowhammer")
+    # Rowhammer specific params.
+    counter_table_length = Param.Unsigned(16, "Number of entries of the TRR "\
+                                        "table for vendor B/counter-based "\
+                                        "maintains.")
+    
+    trr_variant = Param.Unsigned(0, "The different variant of TRR (0 - 7)")
+
+    trr_threshold = Param.Unsigned(32768, "The threshold number used to "\
+                                        "refresh rows in the DRAM device.")
+
+    companion_table_length = Param.Unsigned(8, "The number of entres in the "\
+                                        "companion table.")
+
+    companion_threshold = Param.Unsigned(1024, "The  threshold number "\
+                                        "used to promote a row from the "\
+                                        "companion table to the trr table")
 
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")

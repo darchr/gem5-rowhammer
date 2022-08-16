@@ -104,6 +104,14 @@ class MemInterface : public AbstractMemory
         uint32_t rowAccesses;
         uint32_t bytesAccessed;
 
+        // kg: changes
+
+        std::vector< std::vector<uint64_t> > trr_table;
+        std::vector< std::vector<uint64_t> > companion_table;
+
+        uint32_t entries;
+        uint32_t companion_entries;
+
         std::vector<long int> rhTriggers;
         // The assumption is that the number of columns in a row
         // will not be larger than number of bits in long int
@@ -114,8 +122,12 @@ class MemInterface : public AbstractMemory
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
-            rowAccesses(0), bytesAccessed(0), rhTriggers(0), weakColumns(0)
-        { }
+            rowAccesses(0), bytesAccessed(0), rhTriggers(0), weakColumns(0),
+            entries(0), companion_entries(0)
+        {
+        trr_table.resize(16, std::vector<uint64_t>(4));
+        companion_table.resize(16, std::vector<uint64_t>(4));
+        }
     };
 
     /**
@@ -150,6 +162,7 @@ class MemInterface : public AbstractMemory
     const uint32_t ranksPerChannel;
     const uint32_t banksPerRank;
     uint32_t rowsPerBank;
+
 
     /**
      * General timing requirements
@@ -769,6 +782,15 @@ class DRAMInterface : public MemInterface
 
     //AYAZ: Rowhammer refresh counter
     int refreshCounter = 0;
+
+    // kg: changes here
+    const uint32_t counterTableLength;
+    const uint32_t trrVariant;
+    const uint32_t trrThreshold;
+    const uint32_t companionTableLength;
+    const uint32_t companionThreshold;
+
+    uint64_t num_trr_refreshes;
 
     enums::PageManage pageMgmt;
     /**
