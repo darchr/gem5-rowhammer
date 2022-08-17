@@ -790,7 +790,7 @@ class DRAMInterface : public MemInterface
     const uint32_t companionTableLength;
     const uint32_t companionThreshold;
 
-    uint64_t num_trr_refreshes;
+    uint64_t num_trr_refreshes = 0;
 
     enums::PageManage pageMgmt;
     /**

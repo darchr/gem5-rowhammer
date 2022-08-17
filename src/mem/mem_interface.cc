@@ -395,7 +395,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         uint8_t companion_idx = 0;
 
         bool companion_found_flag = false;
-        for (int i = 1 ; i < std :: max(companionTableLength,
+        for (int i = 0 ; i < std :: max(companionTableLength,
             bank_ref.companion_entries); i++) {
                 // found this address in the companion table.
         if(bank_ref.companion_table[i][0] == rank_ref.rank &&
@@ -406,7 +406,6 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                 break;
             }
         }
-
         if(!companion_found_flag) {
             // If we did not find this row in the companion table, then we make
             // a new entry for this row in the companion table.
@@ -417,7 +416,8 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
             if(bank_ref.companion_entries < companionTableLength) {
                 idx = bank_ref.companion_entries;
-                bank_ref.companion_entries += 1;
+                if(bank_ref.companion_entries < companionTableLength - 1)
+                    bank_ref.companion_entries += 1;
             }
             else {
                 for (int i = 0; i < companionTableLength ; i++) {
@@ -430,42 +430,60 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
             bank_ref.companion_table[idx][0] = rank_ref.rank;
             bank_ref.companion_table[idx][1] = bank_ref.bank;
             bank_ref.companion_table[idx][2] = row;
-            bank_ref.companion_table[idx][1] = 1;
+            bank_ref.companion_table[idx][3] = 1;
         }
         else {
             // found this row. We now have to decide whether we promote this
             // row to the trr_table or we just continue with our experiments
             // This row has more acts than the threshold
 
+            std :: cout << bank_ref.entries << std :: endl;
             if (bank_ref.companion_table[companion_idx][3]
                     > companionThreshold) {
                 // We insert this row in the trr_table
                 // is there space?
                 // kg: Find out if there is space in the TRR table for a new
                 // row insertion
-                uint8_t idx = 0;
+                uint8_t trr_idx = 0;
                 
                 // There is space in the companion table for a new row.
-
                 if(bank_ref.entries < counterTableLength) {
-                    idx = bank_ref.entries;
-                    bank_ref.entries += 1;
+                    trr_idx = bank_ref.entries;
+                    if(bank_ref.entries < counterTableLength - 1)
+                        bank_ref.entries += 1;
                 }
                 else {
                     for (int i = 0; i < counterTableLength ; i++) {
-                        if (bank_ref.trr_table[idx][3] >
+                        if (bank_ref.trr_table[trr_idx][3] >
                                 bank_ref.trr_table[i][3])
-                            idx = i;
+                            trr_idx = i;
                     }
                 }
-                bank_ref.trr_table[idx][0] = 
+                bank_ref.trr_table[trr_idx][0] = 
                         bank_ref.companion_table[companion_idx][0];
-                bank_ref.trr_table[idx][1] = 
+                bank_ref.trr_table[trr_idx][1] = 
                         bank_ref.companion_table[companion_idx][1];
-                bank_ref.trr_table[idx][2] = 
+                bank_ref.trr_table[trr_idx][2] = 
                         bank_ref.companion_table[companion_idx][2];
-                bank_ref.trr_table[idx][1] =
+                bank_ref.trr_table[trr_idx][1] =
                         bank_ref.companion_table[companion_idx][3];
+                
+                // an entry has been cleared in the companion table. we need to
+                // adjust that.
+                // replace the current idx with the last index
+                bank_ref.companion_table[companion_idx][0] =
+                bank_ref.companion_table[bank_ref.companion_entries][0];
+                bank_ref.companion_table[companion_idx][1] =
+                bank_ref.companion_table[bank_ref.companion_entries][1];
+                bank_ref.companion_table[companion_idx][2] =
+                bank_ref.companion_table[bank_ref.companion_entries][2];
+                bank_ref.companion_table[companion_idx][3] =
+                bank_ref.companion_table[bank_ref.companion_entries][3];
+
+                bank_ref.companion_entries--;
+
+                assert(bank_ref.companion_entries >= 0 &&
+                        bank_ref.companion_entries < companionTableLength);
             }
 
         }
@@ -1700,23 +1718,37 @@ DRAMInterface::Rank::processRefreshEvent()
 
                     // We iterate over all the tables of each bank
                     for(auto &b: banks) {
+
+                        bool inhibitor_flag = false;
                         int max_idx = 0;
                         for(int i = 0 ; i < dram.counterTableLength ; i++) {
                             // all refresh
                             if(b.trr_table[i][3] > dram.trrThreshold &&
-                                b.trr_table[max_idx][3] < b.trr_table[i][3])
+                                b.trr_table[max_idx][3] < b.trr_table[i][3]) {
                                 max_idx = i;
+                                inhibitor_flag = true;
+                            }
                         }
-                        // found an entry with more than threshold number of
-                        // activates.
-                        b.trr_table[max_idx][3] = 0;
-                        dram.num_trr_refreshes += 2 * num_neighbor_rows;
 
-                        DPRINTF(RowHammer, "Inhibitor triggered refresh "
-                                        "in bank %d, trr_table idx %d. Total "
-                                        " TRR triggered refreshes %lld\n",
-                                        b.bank, max_idx,
-                                        dram.num_trr_refreshes);
+                        if(inhibitor_flag) {
+                            DPRINTF(RowHammer, "Inhibitor triggered refresh "
+                                            "in rank %d, bank %d, row %d, "
+                                            "count %d, idx %d Count %d \t "
+                                            "Total TRR refreshes %lld\n",
+                                            b.trr_table[max_idx][0],
+                                            b.trr_table[max_idx][1],
+                                            b.trr_table[max_idx][2],
+                                            b.trr_table[max_idx][3],
+                                            max_idx, dram.trrThreshold,
+                                            dram.num_trr_refreshes + (
+                                                2 * num_neighbor_rows
+                                            )
+                            );
+                            // found an entry with more than threshold number of
+                            // activates.
+                            b.trr_table[max_idx][3] = 0;
+                            dram.num_trr_refreshes += 2 * num_neighbor_rows;
+                        }
                     }
                 }
                 break;
@@ -1749,16 +1781,20 @@ DRAMInterface::Rank::processRefreshEvent()
         }
 
 
-        // if (dram.refreshCounter == 8192) {
+        if (dram.refreshCounter == 8192) {
 
-        //     // reset the threshold counters
-        //     for (auto &b : banks) {
-        //         for (int row_index = 0; row_index < dram.rowsPerBank;
-        //             row_index++) {
-        //             b.rhTriggers[row_index] = 0;
-        //         }
-        //     }
-        // }
+            // reset the threshold counters
+            for (auto &b : banks) {
+                for(int i = 0 ; i < dram.counterTableLength; i++)
+                    b.trr_table[i][3] = 0;
+                for(int i = 0 ; i < dram.companionTableLength; i++)
+                    b.companion_table[i][3] = 0;
+                // for (int row_index = 0; row_index < dram.rowsPerBank;
+                //     row_index++) {
+                //     b.rhTriggers[row_index] = 0;
+                // }
+            }
+        }
 
 
 
