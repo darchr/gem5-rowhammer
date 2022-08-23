@@ -51,6 +51,8 @@ class DRAMInterface(MemInterface):
     cxx_header = "mem/mem_interface.hh"
     cxx_class = 'gem5::memory::DRAMInterface'
 
+    device_file = Param.String("/data/aakahlow-new/smt/rh/gem5-Source-Use-This/gem5-rowhammer/device_map.txt","Absolute path with the device info")
+
     # This number is 50K for DDR4 and around 139K for DDR3
     rowhammer_threshold = Param.Unsigned(50000, "Number of activates which "\
                                             "trigger rowhammer")
