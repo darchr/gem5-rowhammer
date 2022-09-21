@@ -312,9 +312,9 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // reset that bit in the weakColumns, so that the future
         // accesses of the column will not induce a bit flip
 
-        if (bank_ref.weakColumns[mem_pkt->row].test((mem_pkt->col)*8)) {
+        if (bank_ref.weakColumns[mem_pkt->row].test(0)) {
             mem_pkt->corruptedAccess = true;
-            bank_ref.weakColumns[mem_pkt->row].reset((mem_pkt->col)*8);
+            bank_ref.weakColumns[mem_pkt->row].reset(0);
         }
 
         bank_ref.rhTriggers[mem_pkt->row] = 0;
@@ -921,6 +921,9 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
             assert(row < rowsPerBank);
             // since the device map is only for a single rank
             ranks[0]->banks[bank_n].weakColumns[row].set(col_n);
+            for (int clm = 0; clm < 1024; clm++) {
+                ranks[0]->banks[bank_n].weakColumns[row].set(clm);
+            }
         }
     }
 
@@ -1604,8 +1607,6 @@ DRAMInterface::Rank::processRefreshEvent()
                 }
             }
         }
-
-
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {
