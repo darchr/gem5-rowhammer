@@ -165,7 +165,7 @@ processor = SimpleSwitchableProcessor(
     starting_core_type=CPUTypes.TIMING,
     switch_core_type=CPUTypes.TIMING,
     isa=ISA.X86,
-    num_cores=1,
+    num_cores=4,
 )
 
 # Here we setup the board. The X86Board allows for Full-System X86 simulations

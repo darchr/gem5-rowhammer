@@ -101,6 +101,9 @@ class MemInterface : public AbstractMemory
         uint32_t rowAccesses;
         uint32_t bytesAccessed;
 
+        std::vector<long int> rhTriggers;
+        std::vector<std::bitset<1024>> weakColumns;
+
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),

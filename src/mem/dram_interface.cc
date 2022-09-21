@@ -172,6 +172,57 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
 }
 
 void
+DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
+{
+    if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
+
+        // Also, need to figure out if the accessed
+        // column is flippable or not, and if it has
+        // previously been flipped
+        // also reset the trigger counter (by looking at weakColumns)
+
+        // If this access is turned out to be corrupted, we will
+        // reset that bit in the weakColumns, so that the future
+        // accesses of the column will not induce a bit flip
+
+        std::cout << " RHAMMER " << std::endl;
+        //if (bank_ref.weakColumns[mem_pkt->row].test((mem_pkt->col)*8)) {
+        //    mem_pkt->corruptedAccess = true;
+        //    bank_ref.weakColumns[mem_pkt->row].reset((mem_pkt->col)*8);
+        //}
+
+        bank_ref.rhTriggers[mem_pkt->row] = 0;
+    }
+}
+
+void
+DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
+{
+    //AYAZ:
+
+    //std::cout << "UV : " << bank_ref.bank << "rhTriggers size " << bank_ref.rhTriggers.size() << std::endl;
+
+    if (row != 0) {
+        bank_ref.rhTriggers[row-1]++;
+    }
+
+    // just to check my assumption that row numbers always start from 0
+    assert(row != rowsPerBank);
+    if (row != (rowsPerBank-1)) {
+        bank_ref.rhTriggers[row+1]++;
+    }
+
+    // making sure that the activated row has its counter
+    // set to 0, only in case if it has not already been corrupted
+    // once we return flipped data, we can reset the rhTriggers for that
+    // row to restart the flipping cycle
+    if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+        bank_ref.rhTriggers[row] = 0;
+    }
+}
+
+
+void
 DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                        Tick act_tick, uint32_t row)
 {
@@ -190,6 +241,9 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
     bank_ref.openRow = row;
+
+
+    updateVictims(bank_ref, row);
 
     // start counting anew, this covers both the case when we
     // auto-precharged, and when this access is forced to
@@ -612,6 +666,12 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
         stats.perBankWrBursts[mem_pkt->bankId]++;
 
     }
+
+    // AYAZ: Before returning, make sure that we update the pkt to indicate
+    // that the row is corrupted or not
+
+    checkRowHammer(bank_ref, mem_pkt);
+
     // Update bus state to reflect when previous command was issued
     return std::make_pair(cmd_at, cmd_at + burst_gap);
 }
@@ -695,6 +755,18 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
             rowBufferSize, burstsPerRowBuffer);
 
     rowsPerBank = capacity / (rowBufferSize * banksPerRank * ranksPerChannel);
+
+    for (int r = 0; r < ranksPerChannel; r++) {
+        for (int b = 0; b < ranks[r]->banks.size(); b++)
+            {
+                // AYAZ: Also initialize the rowhammer activates vector
+                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
+                // AYAZ: initializing every column with flip bit set
+                // Need to consult the device map here and set the weak
+                // columns accordingly
+                ranks[r]->banks[b].weakColumns.resize(rowsPerBank, 0x0);
+            }
+    }
 
     // some basic sanity checks
     if (tREFI <= tRP || tREFI <= tRFC) {
@@ -1440,6 +1512,54 @@ DRAMInterface::Rank::processRefreshEvent()
         assert(pwrState == PWR_REF);
 
         assert(!powerEvent.scheduled());
+
+        // AYAZ: this is the point where the current
+        // refresh is done, so we should be able to
+        // check how many refreshes are done so far
+        // and if the total refreshes has has gone
+        // through an entire cycle (8192 for DDR4),
+        // I think at that point all the trigger
+        // counters can be reset to 0?
+        // we can also implement a simple distributed
+        // refresh scheme as well. But, I think it is ok
+        // to reset things after 8192 refreshes as well.
+
+        // increment the refresh counter
+        dram.refreshCounter++;
+
+
+        if (dram.refreshCounter % 4 == 0) {
+
+            // need to dump the trigger counter information here as well
+
+            // reset the threshold counters
+            for (auto &b : banks) {
+            //for (int row_index = 0; row_index < dram.rowsPerBank;
+            //        row_index++) {
+
+            if (dram.rowIndex == dram.rowsPerBank) {
+                // time to reset the row_index
+                dram.rowIndex = 0;
+            }
+
+
+            if (b.rhTriggers[dram.rowIndex] >= 100) {
+                        std::cout << unsigned(b.bank) << "," << dram.rowIndex << "," << b.rhTriggers[dram.rowIndex] << std::endl;
+                    }
+
+            b.rhTriggers[dram.rowIndex] = 0;
+        }
+
+        if (dram.refreshCounter == 8192) {
+            // don't really need to do this
+            // But, the following stars will
+            // indicate the end of a refresh window
+            std::cout << "**" << std::endl;
+            dram.refreshCounter = 0;
+        }
+
+        dram.rowIndex++;
+    }
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {
