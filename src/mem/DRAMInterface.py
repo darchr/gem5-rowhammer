@@ -58,18 +58,35 @@ class DRAMInterface(MemInterface):
     counter_table_length = Param.Unsigned(16, "Number of entries of the TRR "\
                                         "table for vendor B/counter-based "\
                                         "maintains.")
-    
+
+    # TRR variants must be within 0 to 2. Vendors A, B and C
     trr_variant = Param.Unsigned(0, "The different variant of TRR (0 - 7)")
 
+    # TRR threshold is a lower number than rowhammer_threshold. This must be a
+    # preemptive number which prevents filpping bits in the DRAM rows due to a
+    # rowhammer attack.
     trr_threshold = Param.Unsigned(32768, "The threshold number used to "\
                                         "refresh rows in the DRAM device.")
 
+    # I have used a companion table to implement TRR A as there was no source
+    # materials on how a new row is inserted into the TRR table for vendor A.
     companion_table_length = Param.Unsigned(8, "The number of entres in the "\
                                         "companion table.")
 
+    # Understandably, the threshold for the companion table is much lower than
+    # the actual TRR table.
     companion_threshold = Param.Unsigned(1024, "The  threshold number "\
                                         "used to promote a row from the "\
                                         "companion table to the trr table")
+
+    # The dumper variables can be used to dump traces of the TRR and the RH
+    # triggers. This can be used for post-simulation analysis.
+    trr_stat_dump = Param.Bool(False, "Set this to True to dump TRR triggers"\
+                                    "and generate a TRR trace.")
+
+    # This is similar to trr_stat_dump.
+    rh_stat_dump = Param.Bool(False, "Set this to True to dump RH triggers"\
+                                    "and generate a RH trace")
 
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")
