@@ -48,6 +48,11 @@
 #include "debug/DRAMState.hh"
 #include "debug/NVM.hh"
 #include "sim/system.hh"
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <iostream>
+#include <cstring>
 
 // Including RowHammer.hh for debugging
 #include "debug/RowHammer.hh"
@@ -311,9 +316,9 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // reset that bit in the weakColumns, so that the future
         // accesses of the column will not induce a bit flip
 
-        if (bits(bank_ref.weakColumns[mem_pkt->row], mem_pkt->col) == 1) {
+        if (bank_ref.weakColumns[mem_pkt->row].test(0)) {
             mem_pkt->corruptedAccess = true;
-            replaceBits(bank_ref.weakColumns[mem_pkt->row], mem_pkt->col, mem_pkt->col, 0);
+            bank_ref.weakColumns[mem_pkt->row].reset(0);
         }
 
         bank_ref.rhTriggers[mem_pkt->row] = 0;
@@ -927,6 +932,7 @@ DRAMInterface::addRankToRankDelay(Tick cmd_at)
 
 DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
     : MemInterface(_p),
+      deviceFile(_p.device_file),
       bankGroupsPerRank(_p.bank_groups_per_rank),
       bankGroupArch(_p.bank_groups_per_rank > 0),
       tCL(_p.tCL),
@@ -998,9 +1004,51 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
                 // AYAZ: Also initialize the rowhammer activates vector
                 ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
                 // AYAZ: initializing every column with flip bit set
-                ranks[r]->banks[b].weakColumns.resize(rowsPerBank, 0xFFFFFFFF);
-                //std::cout << "banks : " << banks[b].bank << "rhTriggers size " << banks[b].rhTriggers.size() << std::endl;
+                // Need to consult the device map here and set the weak
+                // columns accordingly
+                ranks[r]->banks[b].weakColumns.resize(rowsPerBank, 0x0);
             }
+    }
+
+
+    //AYAZ: At this point we can get the data from the file and update
+    // the weakColumns structure
+
+    std::string line;
+    std::ifstream input_file;
+    input_file.open(deviceFile);
+
+    while (std::getline(input_file, line))
+    {
+        assert(strcmp(line.c_str(), "**") == 0);
+
+        std::getline(input_file, line);
+        int bank_n = atoi(line.c_str());
+
+        std::getline(input_file, line);
+        int row = atoi(line.c_str());
+
+        //next line contains multiple entries with each corresponding
+
+        std::getline(input_file, line);
+        std::stringstream s_stream(line);
+
+        while(s_stream.good()) {
+            std::string substr;
+            std::getline(s_stream, substr, ','); //get first string delimited by comma
+            int col_n = atoi(substr.c_str());
+            if (strcmp(substr.c_str(), "e") == 0) {
+                break;
+            }
+            assert(col_n < 1024);
+            row = row % rowsPerBank;
+            assert(row < rowsPerBank);
+            // since the device map is only for a single rank
+            ranks[0]->banks[bank_n].weakColumns[row].set(col_n);
+            for (int clm = 0; clm < 1024; clm++) {
+                ranks[0]->banks[bank_n].weakColumns[row].set(clm);
+            }
+        }
     }
 
     // some basic sanity checks
@@ -1748,19 +1796,20 @@ DRAMInterface::Rank::processRefreshEvent()
                 fatal("Unknown trr variant!");
         }
 
+        // kg: This part has to fixed. We need to implement a RH table as
+        // opposed to a TRR table which keeps a track of all the RH attacks and
+        // is also responsible for flipping bits.
 
-        // if (dram.refreshCounter == 8192) {
+        if (dram.refreshCounter == 8192) {
 
-        //     // reset the threshold counters
-        //     for (auto &b : banks) {
-        //         for (int row_index = 0; row_index < dram.rowsPerBank;
-        //             row_index++) {
-        //             b.rhTriggers[row_index] = 0;
-        //         }
-        //     }
-        // }
-
-
+            // reset the threshold counters
+            for (auto &b : banks) {
+                for (int row_index = 0; row_index < dram.rowsPerBank;
+                    row_index++) {
+                    b.rhTriggers[row_index] = 0;
+                }
+            }
+        }
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {
