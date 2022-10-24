@@ -67,7 +67,7 @@ class DRAMInterface(MemInterface):
     companion_table_length = Param.Unsigned(8, "The number of entres in the "\
                                         "companion table.")
 
-    companion_threshold = Param.Unsigned(1024, "The  threshold number "\
+    companion_threshold = Param.Unsigned(128, "The  threshold number "\
                                         "used to promote a row from the "\
                                         "companion table to the trr table")
 
@@ -76,7 +76,7 @@ class DRAMInterface(MemInterface):
 
     # enforce a limit on the number of accesses per row
     max_accesses_per_row = Param.Unsigned(16, "Max accesses per row before "
-                                          "closing");
+                                          "closing")
 
     # default to 0 bank groups per rank, indicating bank group architecture
     # is not used

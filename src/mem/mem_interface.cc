@@ -362,138 +362,330 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
     DPRINTF(DRAM, "Activate at tick %d\n", act_at);
 
-    // kg: We use the trr_table here for this bank.
-    // 0 -> rank
-    // 1 -> bank
-    // 2 -> row
-    // 3 -> counter
+    // we only model TRR for the three major DRAM vendors only.
+    
+    switch (trrVariant) {
+        case 0: {
+            // This corresponds to the table-based TRR from Vendor A.
+            // There are two different TRR-triggered refreshes in this case.
 
-    bool found_flag = false;
+            // kg: We use the trr_table here for this bank.
+            // 0 -> rank
+            // 1 -> bank
+            // 2 -> row
+            // 3 -> counter
 
-    for(int i = 0; i < std::max(counterTableLength, bank_ref.entries); i++) {
-        // found this addr
-        if(bank_ref.trr_table[i][0] == rank_ref.rank &&
-            bank_ref.trr_table[i][1] == bank_ref.bank &&
-            bank_ref.trr_table[i][2] == row) {
-                // TODO: Need to check whether this row is open.
-                // I guess activateBank does not require this.
-                found_flag = true;
-                bank_ref.trr_table[i][3]++;
-                break;
-            }
-    }
+            bool found_flag = false;
 
-    // If the row is not found
-    if(!found_flag) {
-        // We have a row which is not in the TRR table. But we don't know if we
-        // want to put this row in the table or not.
-        // UTRR does not discuss this.
-
-        // We use a small companion counter table, which acts liek a buffer to
-        // insert new rows. Rows gets replaced here.
-
-        uint8_t companion_idx = 0;
-
-        bool companion_found_flag = false;
-        for (int i = 0 ; i < std :: max(companionTableLength,
-            bank_ref.companion_entries); i++) {
-                // found this address in the companion table.
-        if(bank_ref.companion_table[i][0] == rank_ref.rank &&
-            bank_ref.companion_table[i][1] == bank_ref.bank &&
-            bank_ref.companion_table[i][2] == row) {
-                companion_found_flag = true;
-                bank_ref.companion_table[i][3]++;
-                break;
-            }
-        }
-        if(!companion_found_flag) {
-            // If we did not find this row in the companion table, then we make
-            // a new entry for this row in the companion table.
-            
-            uint8_t idx = 0;
-            
-            // There is space in the companion table for a new row.
-
-            if(bank_ref.companion_entries < companionTableLength) {
-                idx = bank_ref.companion_entries;
-                if(bank_ref.companion_entries < companionTableLength - 1)
-                    bank_ref.companion_entries += 1;
-            }
-            else {
-                for (int i = 0; i < companionTableLength ; i++) {
-                    if (bank_ref.companion_table[idx][3] >
-                            bank_ref.companion_table[i][3])
-                        idx = i;
-                }
+            for(int i = 0; i < std::max(
+                counterTableLength, bank_ref.entries); i++) {
+                // found this addr
+                if(bank_ref.trr_table[i][0] == rank_ref.rank &&
+                    bank_ref.trr_table[i][1] == bank_ref.bank &&
+                    bank_ref.trr_table[i][2] == row) {
+                        // TODO: Need to check whether this row is open.
+                        // I guess activateBank does not require this.
+                        found_flag = true;
+                        bank_ref.trr_table[i][3]++;
+                        break;
+                    }
             }
 
-            bank_ref.companion_table[idx][0] = rank_ref.rank;
-            bank_ref.companion_table[idx][1] = bank_ref.bank;
-            bank_ref.companion_table[idx][2] = row;
-            bank_ref.companion_table[idx][3] = 1;
-        }
-        else {
-            // found this row. We now have to decide whether we promote this
-            // row to the trr_table or we just continue with our experiments
-            // This row has more acts than the threshold
+            // If the row is not found
+            if(!found_flag) {
+                // We have a row which is not in the TRR table. But we don't know
+                // if we want to put this row in the table or not.
+                // UTRR does not discuss this.
 
-            std :: cout << bank_ref.entries << std :: endl;
-            if (bank_ref.companion_table[companion_idx][3]
-                    > companionThreshold) {
-                // We insert this row in the trr_table
-                // is there space?
-                // kg: Find out if there is space in the TRR table for a new
-                // row insertion
-                uint8_t trr_idx = 0;
-                
-                // There is space in the companion table for a new row.
-                if(bank_ref.entries < counterTableLength) {
-                    trr_idx = bank_ref.entries;
-                    if(bank_ref.entries < counterTableLength - 1)
-                        bank_ref.entries += 1;
-                }
-                else {
-                    for (int i = 0; i < counterTableLength ; i++) {
-                        if (bank_ref.trr_table[trr_idx][3] >
-                                bank_ref.trr_table[i][3])
-                            trr_idx = i;
+                // We use a small companion counter table, which acts liek a buffer
+                // to insert new rows. Rows gets replaced here.
+
+                uint8_t companion_idx = 0;
+
+                bool companion_found_flag = false;
+                for (int i = 0 ; i < std :: max(companionTableLength,
+                    bank_ref.companion_entries); i++) {
+                        // found this address in the companion table.
+                if(bank_ref.companion_table[i][0] == rank_ref.rank &&
+                    bank_ref.companion_table[i][1] == bank_ref.bank &&
+                    bank_ref.companion_table[i][2] == row) {
+                        companion_found_flag = true;
+                        bank_ref.companion_table[i][3]++;
+                        break;
                     }
                 }
-                bank_ref.trr_table[trr_idx][0] = 
-                        bank_ref.companion_table[companion_idx][0];
-                bank_ref.trr_table[trr_idx][1] = 
-                        bank_ref.companion_table[companion_idx][1];
-                bank_ref.trr_table[trr_idx][2] = 
-                        bank_ref.companion_table[companion_idx][2];
-                bank_ref.trr_table[trr_idx][1] =
-                        bank_ref.companion_table[companion_idx][3];
-                
-                // an entry has been cleared in the companion table. we need to
-                // adjust that.
-                // replace the current idx with the last index
-                bank_ref.companion_table[companion_idx][0] =
-                bank_ref.companion_table[bank_ref.companion_entries][0];
-                bank_ref.companion_table[companion_idx][1] =
-                bank_ref.companion_table[bank_ref.companion_entries][1];
-                bank_ref.companion_table[companion_idx][2] =
-                bank_ref.companion_table[bank_ref.companion_entries][2];
-                bank_ref.companion_table[companion_idx][3] =
-                bank_ref.companion_table[bank_ref.companion_entries][3];
+                if(!companion_found_flag) {
+                    // If we did not find this row in the companion table, then we
+                    // make a new entry for this row in the companion table.
+                    
+                    uint8_t idx = 0;
+                    
+                    // There is space in the companion table for a new row.
 
-                bank_ref.companion_entries--;
+                    if(bank_ref.companion_entries < companionTableLength) {
+                        idx = bank_ref.companion_entries;
+                        if(bank_ref.companion_entries < companionTableLength - 1)
+                            bank_ref.companion_entries += 1;
+                    }
+                    else {
+                        for (int i = 0; i < companionTableLength ; i++) {
+                            if (bank_ref.companion_table[idx][3] >
+                                    bank_ref.companion_table[i][3])
+                                idx = i;
+                        }
+                    }
 
-                assert(bank_ref.companion_entries >= 0 &&
-                        bank_ref.companion_entries < companionTableLength);
+                    bank_ref.companion_table[idx][0] = rank_ref.rank;
+                    bank_ref.companion_table[idx][1] = bank_ref.bank;
+                    bank_ref.companion_table[idx][2] = row;
+                    bank_ref.companion_table[idx][3] = 1;
+                }
+                else {
+                    // found this row. We now have to decide whether we promote 
+                    // this row to the trr_table or we just continue with our
+                    // experiments This row has more acts than the threshold
+
+                    if (bank_ref.companion_table[companion_idx][3]
+                            > companionThreshold) {
+                        // We insert this row in the trr_table
+                        // is there space?
+                        // kg: Find out if there is space in the TRR table for a
+                        // new row insertion
+                        uint8_t trr_idx = 0;
+                        
+                        // There is space in the companion table for a new row.
+                        if(bank_ref.entries < counterTableLength) {
+                            trr_idx = bank_ref.entries;
+                            if(bank_ref.entries < counterTableLength - 1)
+                                bank_ref.entries += 1;
+                        }
+                        else {
+                            for (int i = 0; i < counterTableLength ; i++) {
+                                if (bank_ref.trr_table[trr_idx][3] >
+                                        bank_ref.trr_table[i][3])
+                                    trr_idx = i;
+                            }
+                        }
+                        bank_ref.trr_table[trr_idx][0] = 
+                                bank_ref.companion_table[companion_idx][0];
+                        bank_ref.trr_table[trr_idx][1] = 
+                                bank_ref.companion_table[companion_idx][1];
+                        bank_ref.trr_table[trr_idx][2] = 
+                                bank_ref.companion_table[companion_idx][2];
+                        bank_ref.trr_table[trr_idx][3] =
+                                bank_ref.companion_table[companion_idx][3];
+                        
+                        // an entry has been cleared in the companion table. we
+                        // need to adjust that.
+                        // replace the current idx with the last index
+                        bank_ref.companion_table[companion_idx][0] =
+                        bank_ref.companion_table[bank_ref.companion_entries][0];
+                        bank_ref.companion_table[companion_idx][1] =
+                        bank_ref.companion_table[bank_ref.companion_entries][1];
+                        bank_ref.companion_table[companion_idx][2] =
+                        bank_ref.companion_table[bank_ref.companion_entries][2];
+                        bank_ref.companion_table[companion_idx][3] =
+                        bank_ref.companion_table[bank_ref.companion_entries][3];
+
+                        bank_ref.companion_entries--;
+
+                        assert(bank_ref.companion_entries >= 0 &&
+                                bank_ref.companion_entries < companionTableLength);
+                    }
+
+                }
             }
 
+            DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d, "
+                    "Companion Entries %d\n", rank_ref.rank, bank_ref.bank, row,
+                    bank_ref.entries, bank_ref.companion_entries);
+
+            break;
         }
-        
+        case 1: {
+            // This is the one with the random sampler.
+            // We will use a table. Otherwise, we don't know how to track all
+            // the different rows activated.
+
+            // we also need to decide whether we need to sample this row or not
+            // we use a probability function based on the address' bank, rank
+            // and row bits.
+
+            // We reuse the variable trr_table length. The sampler will randomly
+            // enter these rows into the table. the sampler acts at ACT time.
+
+            // picking the first 10 bits. xoring them to see if that row needs to
+            // be entered in the table or not.
+
+            // TODO: XXX: Missing feature.
+            //  There is no way to know if a particular row's ACT is closing in on
+            //  a tREFI request. This TRR activates its sampler close to the tREFI
+            //  instruction.
+
+            int select_count = 0;
+            int recreated_address = bank_ref.bank + rank_ref.rank + row;
+            bool selected = false;
+
+            while(recreated_address != 0) {
+                selected = selected ^ (recreated_address % 2);
+                recreated_address /=2;
+                if (++select_count == 10)
+                    break;
+            }
+
+            if(selected) {
+                // This row is selected to be sampled. Therefore we proceed to add
+                // this row in the counter table.
+
+                // find space in the trr_table. companion_table is not needed in
+                // this case.
+                // There is space in the companion table for a new row.
+                uint8_t trr_idx = 0;
+
+                // before doing this, we need to check whether we have an entry for
+                // this row or not.
+
+                bool found_flag = false;
+                for(int i = 0; i < std::max(
+                        counterTableLength, bank_ref.entries); i++) {
+                    // found this addr
+                    if(bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+                            // TODO: Need to check whether this row is open.
+                            // I guess activateBank does not require this.
+                            found_flag = true;
+                            bank_ref.trr_table[i][3]++;
+                            break;
+                        }
+                }
+
+                if (!found_flag) {
+                    // only if the table entry for that particular row is missing
+                    // we create a new entry in this table.
+
+                    // otherwise, we are done in this step. We don't need to cover
+                    // this part of the program.
+
+                    if(bank_ref.entries < counterTableLength) {
+                        trr_idx = bank_ref.entries;
+                        if(bank_ref.entries < counterTableLength - 1)
+                            bank_ref.entries += 1;
+                    }
+                    else {
+                        for (int i = 0; i < counterTableLength ; i++) {
+                            if (bank_ref.trr_table[trr_idx][3] >
+                                    bank_ref.trr_table[i][3])
+                                trr_idx = i;
+                        }
+                    }
+                    bank_ref.trr_table[trr_idx][0] = rank_ref.rank;
+                    bank_ref.trr_table[trr_idx][1] = bank_ref.bank;
+                    bank_ref.trr_table[trr_idx][2] = row;
+                    bank_ref.trr_table[trr_idx][3] = 1;
+                }
+            }
+            // we are done in the sampler phase of the program. We just need to
+            // take care of the inhibitor phase of the program.
+
+            break;
+        }
+        case 2: {
+
+            // This case corresponds Vendor C from the U-TRR paper. The major
+            // points in this TRR implementation is the 2k activate count. It also
+            // has a probabilistic sampler, which samples rows. For simplicity,
+            // we will keep a track of the first 2k accesses deterministically.
+            // XXX: How?
+
+            // The table to store this information is fixed. So, we are limited
+            // by space of the trr table.
+
+            // This TRR is also triggered in a per-bank basis.
+
+            // act_count is reset when it reaches 2k in the inhibitor phase.
+
+            bank_ref.act_count++;
+
+            // We use the same random function to keep a track of these aggressor
+            // rows in the table.
+
+            int select_count = 0;
+            int recreated_address = bank_ref.bank + rank_ref.rank + row;
+            bool selected = false;
+
+            while(recreated_address != 0) {
+                selected = selected ^ (recreated_address % 2);
+                recreated_address /=2;
+                if (++select_count == 10)
+                    break;
+            }
+
+            if (selected) {
+                // similar procedure as Vendor B. We traverse the table to find
+                // this entry in the table. This counter is necessary to issue
+                // refreshes in the inhibitor phase.
+
+                // This row is selected to be sampled. Therefore we proceed to add
+                // this row in the counter table.
+
+                // before doing this, we need to check whether we have an entry for
+                // this row or not.
+
+                bool found_flag = false;
+                for(int i = 0; i < std::max(
+                        counterTableLength, bank_ref.entries); i++) {
+                    // found this addr
+                    if(bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+                            // TODO: Need to check whether this row is open.
+                            // I guess activateBank does not require this.
+                            found_flag = true;
+                            bank_ref.trr_table[i][3]++;
+                            break;
+                        }
+                }
+
+                if (!found_flag) {
+                    // find space in the trr_table. companion_table is not needed
+                    // in this case.
+                    // There is space in the companion table for a new row.
+                    uint8_t trr_idx = 0;
+                    // only if the table entry for that particular row is missing
+                    // we create a new entry in this table.
+
+                    // otherwise, we are done in this step. We don't need to cover
+                    // this part of the program.
+
+                    if(bank_ref.entries < counterTableLength) {
+                        trr_idx = bank_ref.entries;
+                        if(bank_ref.entries < counterTableLength - 1)
+                            bank_ref.entries += 1;
+                    }
+                    else {
+                        for (int i = 0; i < counterTableLength ; i++) {
+                            if (bank_ref.trr_table[trr_idx][3] >
+                                    bank_ref.trr_table[i][3])
+                                trr_idx = i;
+                        }
+                    }
+                    bank_ref.trr_table[trr_idx][0] = rank_ref.rank;
+                    bank_ref.trr_table[trr_idx][1] = bank_ref.bank;
+                    bank_ref.trr_table[trr_idx][2] = row;
+                    bank_ref.trr_table[trr_idx][3] = 1;
+                }
+            }
+
+            // we just need to program the inhibitor phase of the program now.
+            
+            break;
+        }
+    
+        default:
+            fatal("Unknown trr_variant detected!");
+            break;
     }
-
-    DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d, "
-            "Companion Entries %d\n", rank_ref.rank, bank_ref.bank, row,
-            bank_ref.entries, bank_ref.companion_entries);
-
 
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
@@ -1692,18 +1884,35 @@ DRAMInterface::Rank::processRefreshEvent()
         dram.refreshCounter++;
 
         int num_neighbor_rows = 0;
+
+        // the trr implementation is different than the og version implemented
+        // here in this code.
+
+        // There are only three cases. subversions are interleaved/switched
+        // based on the refreshCounter count.
+
         switch(dram.trrVariant) {
             case 0:
                 // TRR variant A always picks exactly 1 row with the
                 // highest activation count.
                 num_neighbor_rows = 1;
 
-            case 1:
-
                 // Number of neighboring rows is the a little confusing for
                 // this version of the code.
-                if(num_neighbor_rows == 0)
-                    num_neighbor_rows = 2;
+                break;
+
+            case 1:
+                // This is Vendor B from the U-TRR paper.
+                if(dram.refreshCounter % 4 == 0) {
+                    // We need to refresh the row with the maximum number of
+                    // activates across all the tables. Although this row is 
+                    // maintained per bank, but I think refreshing the max
+                    // among the max per bank will do the trick.
+                    num_neighbor_rows = 1;
+
+                    // for(auto)
+                }
+                break;
             case 3:
                 if(num_neighbor_rows == 0)
                     num_neighbor_rows = 1;
@@ -1712,8 +1921,9 @@ DRAMInterface::Rank::processRefreshEvent()
 
                 assert(num_neighbor_rows != 0);
 
-                if (dram.refreshCounter % 9 == 0) {
-                    // We need to traver all the TRR tables per bank to find
+                if (dram.refreshCounter % 9 == 0 &&
+                        dram.refreshCounter % 2 == 1) {
+                    // We need to traverse all the TRR tables per bank to find
                     // out which row to refresh.
 
                     // We iterate over all the tables of each bank

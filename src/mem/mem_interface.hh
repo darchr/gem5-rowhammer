@@ -109,6 +109,8 @@ class MemInterface : public AbstractMemory
         std::vector< std::vector<uint64_t> > trr_table;
         std::vector< std::vector<uint64_t> > companion_table;
 
+        uint32_t act_count = 0;
+
         uint32_t entries;
         uint32_t companion_entries;
 
