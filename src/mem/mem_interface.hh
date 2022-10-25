@@ -115,11 +115,7 @@ class MemInterface : public AbstractMemory
         uint32_t companion_entries;
 
         std::vector<long int> rhTriggers;
-        // The assumption is that the number of columns in a row
-        // will not be larger than number of bits in long int
-        // and every bit will point out if that particular column
-        // is flippable or not
-        std::vector<long int> weakColumns;
+        std::vector<std::bitset<1024>> weakColumns;
 
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
@@ -781,6 +777,10 @@ class DRAMInterface : public MemInterface
 
     //AYAZ: Rowhammer activation threshold
     const uint32_t rowhammerThreshold;
+
+    //AYAZ: the path to the device file with
+    // the information on weak columns
+    std::string deviceFile;
 
     //AYAZ: Rowhammer refresh counter
     int refreshCounter = 0;
