@@ -145,3 +145,4 @@ DebugFlag("MemCheckerMonitor")
 DebugFlag("QOS")
 
 DebugFlag("RowHammer")
+DebugFlag("RhInhibitor")

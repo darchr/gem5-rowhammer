@@ -56,6 +56,7 @@
 
 // Including RowHammer.hh for debugging
 #include "debug/RowHammer.hh"
+#include "debug/RhInhibitor.hh"
 
 namespace gem5
 {
@@ -349,6 +350,11 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
         bank_ref.rhTriggers[row] = 0;
     }
+
+    // // kg: the same needs to be done to the trr tables as well
+    // bool found;
+    // for(int i = 0 ; i < std::min(counterTableLength, ))
+    // bank_ref.trr_table[][]
 }
 
 void
@@ -392,6 +398,10 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                         // I guess activateBank does not require this.
                         found_flag = true;
                         bank_ref.trr_table[i][3]++;
+                        // std :: cout << bank_ref.trr_table[i][0] << " " 
+                        // << bank_ref.trr_table[i][1] << " " << 
+                        // bank_ref.trr_table[i][2] << " " << 
+                        // bank_ref.trr_table[i][3] << std :: endl;
                         break;
                     }
             }
@@ -405,15 +415,15 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                 // We use a small companion counter table, which acts liek a buffer
                 // to insert new rows. Rows gets replaced here.
 
-                uint8_t companion_idx = 0;
+                int companion_idx = 0;
 
                 bool companion_found_flag = false;
                 for (int i = 0 ; i < std :: max(companionTableLength,
-                    bank_ref.companion_entries); i++) {
-                        // found this address in the companion table.
-                if(bank_ref.companion_table[i][0] == rank_ref.rank &&
-                    bank_ref.companion_table[i][1] == bank_ref.bank &&
-                    bank_ref.companion_table[i][2] == row) {
+                        bank_ref.companion_entries); i++) {
+                    // found this address in the companion table.
+                    if(bank_ref.companion_table[i][0] == rank_ref.rank &&
+                            bank_ref.companion_table[i][1] == bank_ref.bank &&
+                            bank_ref.companion_table[i][2] == row) {
                         companion_found_flag = true;
                         bank_ref.companion_table[i][3]++;
                         break;
@@ -423,12 +433,12 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                     // If we did not find this row in the companion table, then we
                     // make a new entry for this row in the companion table.
                     
-                    uint8_t idx = 0;
+                    int idx = 0;
                     
                     // There is space in the companion table for a new row.
 
                     if(bank_ref.companion_entries < companionTableLength) {
-                        idx = bank_ref.companion_entries;
+                        idx = (int)bank_ref.companion_entries;
                         if(bank_ref.companion_entries < companionTableLength - 1)
                             bank_ref.companion_entries += 1;
                     }
@@ -450,21 +460,31 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                     // this row to the trr_table or we just continue with our
                     // experiments This row has more acts than the threshold
 
+                    // std::cout << bank_ref.companion_table[companion_idx][0] <<
+                    //     " " << bank_ref.companion_table[companion_idx][1] <<
+                    //     " " << bank_ref.companion_table[companion_idx][2] <<
+                    //     " " << bank_ref.companion_table[companion_idx][3] <<
+                    //     std::endl;
+
                     if (bank_ref.companion_table[companion_idx][3]
                             > companionThreshold) {
                         // We insert this row in the trr_table
                         // is there space?
                         // kg: Find out if there is space in the TRR table for a
                         // new row insertion
-                        uint8_t trr_idx = 0;
+                        int trr_idx = 0;
+                        // std :: cout << "__x called" << std :: endl;
                         
-                        // There is space in the companion table for a new row.
+                        // There is space in the trr table for a new row.
                         if(bank_ref.entries < counterTableLength) {
-                            trr_idx = bank_ref.entries;
+                            trr_idx = (int)bank_ref.entries;
+                            // std :: cout << "_x " << trr_idx << " " << bank_ref.entries << std :: endl;
                             if(bank_ref.entries < counterTableLength - 1)
-                                bank_ref.entries += 1;
+                                bank_ref.entries++;
                         }
                         else {
+                            // there is no space for a new row. We replace the
+                            // trr entry with the least act count.
                             for (int i = 0; i < counterTableLength ; i++) {
                                 if (bank_ref.trr_table[trr_idx][3] >
                                         bank_ref.trr_table[i][3])
@@ -483,17 +503,26 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                         // an entry has been cleared in the companion table. we
                         // need to adjust that.
                         // replace the current idx with the last index
-                        bank_ref.companion_table[companion_idx][0] =
-                        bank_ref.companion_table[bank_ref.companion_entries][0];
-                        bank_ref.companion_table[companion_idx][1] =
-                        bank_ref.companion_table[bank_ref.companion_entries][1];
-                        bank_ref.companion_table[companion_idx][2] =
-                        bank_ref.companion_table[bank_ref.companion_entries][2];
-                        bank_ref.companion_table[companion_idx][3] =
-                        bank_ref.companion_table[bank_ref.companion_entries][3];
+                        for(int i = companion_idx ; i < std::min(
+                                companionTableLength,
+                                bank_ref.companion_entries); i++) {
+                            int max = std::min(companionTableLength,
+                                    bank_ref.companion_entries) - 1;
+                            // std::cout << i << " " << max << std::endl;
+                            if(companion_idx != max) {
+                                bank_ref.companion_table[i][0] =
+                                bank_ref.companion_table[i + 1][0];
+                                bank_ref.companion_table[i][1] =
+                                bank_ref.companion_table[i + 1][1];
+                                bank_ref.companion_table[i][2] =
+                                bank_ref.companion_table[i + 1][2];
+                                bank_ref.companion_table[i][3] =
+                                bank_ref.companion_table[i + 1][3];
+                                }
+                            }
 
                         bank_ref.companion_entries--;
-
+                        std::cout << "end" << std::endl;
                         assert(bank_ref.companion_entries >= 0 &&
                                 bank_ref.companion_entries < companionTableLength);
                     }
@@ -1944,33 +1973,9 @@ DRAMInterface::Rank::processRefreshEvent()
                 // TRR variant A always picks exactly 1 row with the
                 // highest activation count.
                 num_neighbor_rows = 1;
-
-                // Number of neighboring rows is the a little confusing for
-                // this version of the code.
-                break;
-
-            case 1:
-                // This is Vendor B from the U-TRR paper.
-                if(dram.refreshCounter % 4 == 0) {
-                    // We need to refresh the row with the maximum number of
-                    // activates across all the tables. Although this row is 
-                    // maintained per bank, but I think refreshing the max
-                    // among the max per bank will do the trick.
-                    num_neighbor_rows = 1;
-
-                    // for(auto)
-                }
-                break;
-            case 3:
-                if(num_neighbor_rows == 0)
-                    num_neighbor_rows = 1;
-            case 6:
                 // ensure that the number of rows to be refreshed is not 0
 
-                assert(num_neighbor_rows != 0);
-
-                if (dram.refreshCounter % 9 == 0 &&
-                        dram.refreshCounter % 2 == 1) {
+                if (dram.refreshCounter % 9 == 0) {
                     // We need to traverse all the TRR tables per bank to find
                     // out which row to refresh.
 
@@ -1978,18 +1983,38 @@ DRAMInterface::Rank::processRefreshEvent()
                     for(auto &b: banks) {
 
                         bool inhibitor_flag = false;
+                        // TODO:
+                        // TRR can refresh all rows which has > th hammer count
                         int max_idx = 0;
-                        for(int i = 0 ; i < dram.counterTableLength ; i++) {
+                        for(int i = 1 ; i < std::min(b.entries,
+                                dram.counterTableLength) ; i++) {
                             // all refresh
-                            if(b.trr_table[i][3] > dram.trrThreshold &&
-                                b.trr_table[max_idx][3] < b.trr_table[i][3]) {
-                                max_idx = i;
-                                inhibitor_flag = true;
+                            // i's hammer count should be more than the set
+                            // threshold.
+                            // max_idx should have the highest hammers
+                            // if i's hammer count is < max_idx, then we
+                            // swap these two.
+                            if(b.trr_table[i][3] > dram.trrThreshold) {
+                                if (b.trr_table[max_idx][3] < b.trr_table[i][3]
+                                    ) {
+                                    inhibitor_flag = true;
+                                    max_idx = i;
+                                    }
+                                else {
+                                    // max_idx still has more activates than i
+                                    // we just need to verify whether it has
+                                    // more hammers than the threshold.
+                                    if(b.trr_table[max_idx][3] > 
+                                            dram.trrThreshold)
+                                        inhibitor_flag = true;
+                                    // else max_idx still hasn't reached th.
+                                    // do nothing basically
+                                }
                             }
                         }
 
                         if(inhibitor_flag) {
-                            DPRINTF(RowHammer, "Inhibitor triggered refresh "
+                            DPRINTF(RhInhibitor, "Inhibitor triggered refresh "
                                             "in rank %d, bank %d, row %d, "
                                             "count %d, idx %d Count %d \t "
                                             "Total TRR refreshes %lld\n",
@@ -2002,8 +2027,10 @@ DRAMInterface::Rank::processRefreshEvent()
                                                 2 * num_neighbor_rows
                                             )
                             );
-                            // found an entry with more than threshold number of
-                            // activates.
+                            // found an entry with more than threshold number
+                            // of activates. it is important to note that
+                            // entries in the trr table isn't cleared.
+
                             b.trr_table[max_idx][3] = 0;
                             dram.num_trr_refreshes += 2 * num_neighbor_rows;
                         }
@@ -2011,28 +2038,27 @@ DRAMInterface::Rank::processRefreshEvent()
                 }
                 break;
 
+                // Number of neighboring rows is the a little confusing for
+                // this version of the code.
+                // break;
+
+            case 1:
+                // This is Vendor B from the U-TRR paper.
+                num_neighbor_rows = 1;
+
+                if(dram.refreshCounter % 2 == 0 || 
+                        dram.refreshCounter % 4 == 0 ||
+                        dram.refreshCounter % 9 == 0) {
+                    // We need to refresh the row with the maximum number of
+                    // activates across all the tables. Although this row is 
+                    // maintained per bank, but I think refreshing the max
+                    // among the max per bank will do the trick.
+                
+
+                    // for(auto)
+                }
+                break;
             case 2:
-                if (dram.refreshCounter % 4 == 0) {
-
-                }
-                break;
-
-            case 4:
-                if (dram.refreshCounter % 2 == 0) {
-
-                }
-                break;
-
-            case 5:
-                if (dram.refreshCounter % 17 == 0) {
-
-                }
-                break;
-
-            case 7:
-                if (dram.refreshCounter % 8 == 0) {
-
-                }
                 break;
             default:
                 fatal("Unknown trr variant!");
@@ -2041,8 +2067,8 @@ DRAMInterface::Rank::processRefreshEvent()
         // opposed to a TRR table which keeps a track of all the RH attacks and
         // is also responsible for flipping bits.
 
-
         if (dram.refreshCounter == 8192) {
+            std :: cout << "Refershed" << std :: endl;
 
             // reset the threshold counters
             for (auto &b : banks) {
