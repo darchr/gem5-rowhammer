@@ -57,6 +57,8 @@
 // Including RowHammer.hh for debugging
 #include "debug/RowHammer.hh"
 #include "debug/RhInhibitor.hh"
+#include "debug/DRAMAddr.hh"
+#include "debug/RhBitflip.hh"
 
 namespace gem5
 {
@@ -177,6 +179,9 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
 
     DPRINTF(DRAM, "Address: %#x Rank %d Bank %d Row %d\n",
             pkt_addr, rank, bank, row);
+    
+    DPRINTF(DRAMAddr, "Address: %#x Rank %d Bank %d Row %d Col %d\n",
+            pkt_addr, rank, bank, row, col);
 
     // create the corresponding memory packet with the entry time and
     // ready time set to the current tick, the latter will be updated
@@ -307,6 +312,8 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
     
     if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
+        DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
+                bank_ref.bank, mem_pkt->row);
 
         // Also, need to figure out if the accessed
         // column is flippable or not, and if it has
@@ -351,10 +358,9 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
         bank_ref.rhTriggers[row] = 0;
     }
 
-    // // kg: the same needs to be done to the trr tables as well
-    // bool found;
-    // for(int i = 0 ; i < std::min(counterTableLength, ))
-    // bank_ref.trr_table[][]
+    // kg: the same needs to be done to the trr tables as well
+    //     the trr tables are reset (if necessary) in the refresh section,
+    //     where these are triggered.
 }
 
 void
@@ -377,6 +383,10 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
     
     switch (trrVariant) {
         case 0: {
+            // this is basically no trr. it does absolutely nothing.
+            break;
+        }
+        case 1: {
             // This corresponds to the table-based TRR from Vendor A.
             // There are two different TRR-triggered refreshes in this case.
 
@@ -536,7 +546,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
             break;
         }
-        case 1: {
+        case 2: {
             // This is the one with the random sampler.
             // We will use a table. Otherwise, we don't know how to track all
             // the different rows activated.
@@ -624,7 +634,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
             break;
         }
-        case 2: {
+        case 3: {
 
             // This case corresponds Vendor C from the U-TRR paper. The major
             // points in this TRR implementation is the 2k activate count. It also
@@ -720,6 +730,8 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
             fatal("Unknown trr_variant detected!");
             break;
     }
+
+    // No TRR code beyound this point.
 
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
@@ -1970,6 +1982,9 @@ DRAMInterface::Rank::processRefreshEvent()
 
         switch(dram.trrVariant) {
             case 0:
+                // This is no TRR Variant. It does absolutely nothing.
+                break;
+            case 1:
                 // TRR variant A always picks exactly 1 row with the
                 // highest activation count.
                 num_neighbor_rows = 1;
@@ -2042,7 +2057,7 @@ DRAMInterface::Rank::processRefreshEvent()
                 // this version of the code.
                 // break;
 
-            case 1:
+            case 2:
                 // This is Vendor B from the U-TRR paper.
                 num_neighbor_rows = 1;
 
@@ -2058,11 +2073,15 @@ DRAMInterface::Rank::processRefreshEvent()
                     // for(auto)
                 }
                 break;
-            case 2:
+            case 3:
                 break;
             default:
                 fatal("Unknown trr variant!");
         }
+
+        // No TRR code beyond this point.
+
+        // TODO
         // kg: This part has to fixed. We need to implement a RH table as
         // opposed to a TRR table which keeps a track of all the RH attacks and
         // is also responsible for flipping bits.
@@ -2070,21 +2089,38 @@ DRAMInterface::Rank::processRefreshEvent()
         if (dram.refreshCounter == 8192) {
             std :: cout << "Refershed" << std :: endl;
 
-            // reset the threshold counters
-            for (auto &b : banks) {
-                for(int i = 0 ; i < dram.counterTableLength; i++)
-                    b.trr_table[i][3] = 0;
-                for(int i = 0 ; i < dram.companionTableLength; i++)
-                    b.companion_table[i][3] = 0;
-                // for (int row_index = 0; row_index < dram.rowsPerBank;
-                //     row_index++) {
-                //     b.rhTriggers[row_index] = 0;
-                // }
+            // reset the threshold counters. this depends on the trr variant
+            // that we use.
+
+            switch(dram.trrVariant) {
+                case 0:
+                    break;
+                case 1: 
+                    // there must be no cross variable initialziations.
+
+                    for (auto &b : banks) {
+                        for(int i = 0 ; i < dram.counterTableLength; i++)
+                            b.trr_table[i][3] = 0;
+                        for(int i = 0 ; i < dram.companionTableLength; i++)
+                            b.companion_table[i][3] = 0;
+                        // for (int row_index = 0; row_index < dram.rowsPerBank;
+                        //     row_index++) {
+                        //     b.rhTriggers[row_index] = 0;
+                        // }
+                    }
+                    break;
+                case 2:
+                    // raise NotImplementedError();
+                    break;
+                case 3:
+                    break;
+                default:
+                    fatal("Unknown TRR Variant detected!");
             }
         }
 
         if (dram.refreshCounter == 8192) {
-
+            // these counters are for the general rowhammer detection.
             // reset the threshold counters
             for (auto &b : banks) {
                 for (int row_index = 0; row_index < dram.rowsPerBank;

@@ -648,13 +648,15 @@ MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
     // response
     // AYAZ: Also, need to keep track if this column has already been
     // flipped or not
+    // kg: rows can be flipped again within the same refresh window 
     if (dram && dram->getAddrRange().contains(pkt->getAddr())) {
 
         if (corruptedAccess) {
             std::cout << "Corrupted Access : Address : " << pkt->getAddr()  << std::endl;
             dram->access(pkt, true);
             assert(pkt->hasData());
-            std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;
+            std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;   
+            corruptedAccess = false;
         } else {
             dram->access(pkt, false);
         }

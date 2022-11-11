@@ -146,3 +146,5 @@ DebugFlag("QOS")
 
 DebugFlag("RowHammer")
 DebugFlag("RhInhibitor")
+DebugFlag("RhBitflip")
+DebugFlag("DRAMAddr")

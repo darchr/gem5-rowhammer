@@ -61,8 +61,8 @@ class DRAMInterface(MemInterface):
                                         "table for vendor B/counter-based "\
                                         "maintains.")
 
-    # TRR variants must be within 0 to 2. Vendors A, B and C
-    trr_variant = Param.Unsigned(0, "The different variant of TRR (0 - 7)")
+    # TRR variants must be within 0 to 3. No TRR, Vendors A, B and C
+    trr_variant = Param.Unsigned(0, "The different variant of TRR (0 - 3)")
 
     # TRR threshold is a lower number than rowhammer_threshold. This must be a
     # preemptive number which prevents filpping bits in the DRAM rows due to a
