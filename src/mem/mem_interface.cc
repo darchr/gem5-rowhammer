@@ -310,10 +310,17 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
 void
 DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
-    
-    if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
+    // DPRINTF(RhBitflip, "Counter for %#x, bank %d, row %d, counter - 1 %d, "
+    //         "counter + 1 %d\n",
+    //         mem_pkt->addr, bank_ref.bank, mem_pkt->row,
+    //         bank_ref.rhTriggers[mem_pkt->row + 1], bank_ref.rhTriggers[mem_pkt->row - 1]);
+
+    // row `mem_pkt->row` was ACTIVATED. we need to check its neighborhood for
+    // bitflips.
+
+    if (bank_ref.rhTriggers[mem_pkt->row - 1]  >= rowhammerThreshold) {
         DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
-                bank_ref.bank, mem_pkt->row);
+                bank_ref.bank, mem_pkt->row - 1);
 
         // Also, need to figure out if the accessed
         // column is flippable or not, and if it has
@@ -324,12 +331,33 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // reset that bit in the weakColumns, so that the future
         // accesses of the column will not induce a bit flip
 
-        if (bank_ref.weakColumns[mem_pkt->row].test(0)) {
+        if (bank_ref.weakColumns[mem_pkt->row - 1].test(0)) {
             mem_pkt->corruptedAccess = true;
-            bank_ref.weakColumns[mem_pkt->row].reset(0);
+            bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
         }
 
-        bank_ref.rhTriggers[mem_pkt->row] = 0;
+        bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
+    }
+
+        if (bank_ref.rhTriggers[mem_pkt->row + 1]  >= rowhammerThreshold) {
+        DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
+                bank_ref.bank, mem_pkt->row + 1);
+
+        // Also, need to figure out if the accessed
+        // column is flippable or not, and if it has
+        // previously been flipped
+        // also reset the trigger counter (by looking at weakColumns)
+
+        // If this access is turned out to be corrupted, we will
+        // reset that bit in the weakColumns, so that the future
+        // accesses of the column will not induce a bit flip
+
+        if (bank_ref.weakColumns[mem_pkt->row + 1].test(0)) {
+            mem_pkt->corruptedAccess = true;
+            bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
+        }
+
+        bank_ref.rhTriggers[mem_pkt->row + 1] = 0;
     }
 }
 
@@ -532,7 +560,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                             }
 
                         bank_ref.companion_entries--;
-                        std::cout << "end" << std::endl;
+                        // std::cout << "end" << std::endl;
                         assert(bank_ref.companion_entries >= 0 &&
                                 bank_ref.companion_entries < companionTableLength);
                     }
@@ -1155,8 +1183,17 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 
     }
 
+    // kg: now, if we access a row, its rhtrigger counter has to be set to 0.
+    // this is because we accessed the row. this can potentially become the
+    // starting point for context sensitive rowhammer analysis.
+
+    bank_ref.rhTriggers[mem_pkt->row] = 0;
+
     // AYAZ: Before returning, make sure that we update the pkt to indicate
     // that the row is corrupted or not
+
+    // kg: point to discuss. we need to do this somewhere else
+    // TODO
 
     checkRowHammer(bank_ref, mem_pkt);
 
@@ -1800,7 +1837,7 @@ DRAMInterface::Rank::processWriteDoneEvent()
 
 void
 DRAMInterface::Rank::processRefreshEvent()
-{
+{ 
     // when first preparing the refresh, remember when it was due
     if ((refreshState == REF_IDLE) || (refreshState == REF_SREF_EXIT)) {
         // remember when the refresh is due
@@ -2029,6 +2066,10 @@ DRAMInterface::Rank::processRefreshEvent()
                         }
 
                         if(inhibitor_flag) {
+                            // this is where the refresh is happening.
+                            // currently there is no way of counting the
+                            // extra latency (none) or the power this step
+                            // consumes.
                             DPRINTF(RhInhibitor, "Inhibitor triggered refresh "
                                             "in rank %d, bank %d, row %d, "
                                             "count %d, idx %d Count %d \t "
@@ -2048,6 +2089,18 @@ DRAMInterface::Rank::processRefreshEvent()
 
                             b.trr_table[max_idx][3] = 0;
                             dram.num_trr_refreshes += 2 * num_neighbor_rows;
+
+                            // need to reset the rhTriggers too for the victim
+                            // rows.
+                            for(int j = 0 ; j < num_neighbor_rows; j++) {
+                                b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
+                                        = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
+                                        = 0;
+                            // this logic should be bypassed when the number of
+                            // aggressor rows will be more than the trr_table's
+                            // size.
+                            }
                         }
                     }
                 }
