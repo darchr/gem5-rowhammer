@@ -106,6 +106,7 @@ class MemInterface : public AbstractMemory
 
         // kg: changes
 
+        // std::vector< std::vector<uint64_t> > agg_table;
         std::vector< std::vector<uint64_t> > trr_table;
         std::vector< std::vector<uint64_t> > companion_table;
 
@@ -123,8 +124,8 @@ class MemInterface : public AbstractMemory
             rowAccesses(0), bytesAccessed(0), rhTriggers(0), weakColumns(0),
             entries(0), companion_entries(0)
         {
-        trr_table.resize(16, std::vector<uint64_t>(4));
-        companion_table.resize(16, std::vector<uint64_t>(4));
+        trr_table.resize(6, std::vector<uint64_t>(4)); 
+        companion_table.resize(6, std::vector<uint64_t>(4));
         }
     };
 

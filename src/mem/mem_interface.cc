@@ -53,6 +53,8 @@
 #include <sstream>
 #include <iostream>
 #include <cstring>
+#include<stdlib.h>
+#include<time.h>
 
 // Including RowHammer.hh for debugging
 #include "debug/RowHammer.hh"
@@ -318,46 +320,141 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
     // row `mem_pkt->row` was ACTIVATED. we need to check its neighborhood for
     // bitflips.
 
+    bool single_sided = false;
+
     if (bank_ref.rhTriggers[mem_pkt->row - 1]  >= rowhammerThreshold) {
-        DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
-                bank_ref.bank, mem_pkt->row - 1);
+        // this is a compound probability factor with a tunable parameter
+        // for double rowhammer attacks
 
-        // Also, need to figure out if the accessed
-        // column is flippable or not, and if it has
-        // previously been flipped
-        // also reset the trigger counter (by looking at weakColumns)
+        // check the ndb of the this row:
+        // we dont know that the value of N is in an N-sided attack. so we
+        // only have to see whether (a) this row is a part of an N sided
+        // attack.
+        // we expect that the number of activates of the edge rows is similar.
+        // in order to not let this slip, we keep a difference variable called
+        // delta. the user can set this value.
 
-        // If this access is turned out to be corrupted, we will
-        // reset that bit in the weakColumns, so that the future
-        // accesses of the column will not induce a bit flip
-
-        if (bank_ref.weakColumns[mem_pkt->row - 1].test(0)) {
-            mem_pkt->corruptedAccess = true;
-            bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
+        // a dsrh row will have the fist bitflip
+        // check this
+        int delta = 15;
+        bool bitflip_status = false;
+        if(bank_ref.rhTriggers[mem_pkt->row - 1] >
+                bank_ref.rhTriggers[mem_pkt->row + 1] - delta &&
+                bank_ref.rhTriggers[mem_pkt->row - 1] <
+                bank_ref.rhTriggers[mem_pkt->row + 1] + delta) {
+            // single sided rowhammer attack!
+            single_sided = true;
+        }
+        else {
+            // this has to be a double-sided rowhammer.
+            // find out if this is an edge case.
+            int delta = 15;
+            if(bank_ref.rhTriggers[mem_pkt->row - 1] >
+                    bank_ref.rhTriggers[mem_pkt->row + 1] - 4 * delta &&
+                    bank_ref.rhTriggers[mem_pkt->row - 1] <
+                    bank_ref.rhTriggers[mem_pkt->row + 1] + 4 * delta) {
+            // this is an edge row.
+            single_sided = true;
+            }
         }
 
-        bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
+        if(single_sided) {
+            srand(time(NULL));
+            int prob = rand() % 10000000 + 1;
+            if(prob <= 10)
+                // flip a bit!
+                bitflip_status = true;
+        }
+
+        if(bitflip_status) {
+            DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
+                    bank_ref.bank, mem_pkt->row - 1);
+
+            // Also, need to figure out if the accessed
+            // column is flippable or not, and if it has
+            // previously been flipped
+            // also reset the trigger counter (by looking at weakColumns)
+
+            // If this access is turned out to be corrupted, we will
+            // reset that bit in the weakColumns, so that the future
+            // accesses of the column will not induce a bit flip
+
+            if (bank_ref.weakColumns[mem_pkt->row - 1].test(0)) {
+                mem_pkt->corruptedAccess = true;
+                bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
+            }
+
+            bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
+        }
     }
 
-        if (bank_ref.rhTriggers[mem_pkt->row + 1]  >= rowhammerThreshold) {
-        DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
-                bank_ref.bank, mem_pkt->row + 1);
+    single_sided = false;
 
-        // Also, need to figure out if the accessed
-        // column is flippable or not, and if it has
-        // previously been flipped
-        // also reset the trigger counter (by looking at weakColumns)
+    if (bank_ref.rhTriggers[mem_pkt->row + 1]  >= rowhammerThreshold) {
 
-        // If this access is turned out to be corrupted, we will
-        // reset that bit in the weakColumns, so that the future
-        // accesses of the column will not induce a bit flip
+        // this is a compound probability factor with a tunable parameter
+        // for double rowhammer attacks
 
-        if (bank_ref.weakColumns[mem_pkt->row + 1].test(0)) {
-            mem_pkt->corruptedAccess = true;
-            bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
+        // check the ndb of the this row:
+        // we dont know that the value of N is in an N-sided attack. so we
+        // only have to see whether (a) this row is a part of an N sided
+        // attack.
+        // we expect that the number of activates of the edge rows is similar.
+        // in order to not let this slip, we keep a difference variable called
+        // delta. the user can set this value.
+
+        // a dsrh row will have the fist bitflip
+        // check this
+        int delta = 15;
+        bool bitflip_status = false;
+        if(bank_ref.rhTriggers[mem_pkt->row - 1] >
+                bank_ref.rhTriggers[mem_pkt->row + 1] - delta &&
+                bank_ref.rhTriggers[mem_pkt->row - 1] <
+                bank_ref.rhTriggers[mem_pkt->row + 1] + delta) {
+            // single sided rowhammer attack!
+            single_sided = true;
+        }
+        else {
+            // this has to be a double-sided rowhammer.
+            // find out if this is an edge case.
+            int delta = 15;
+            if(bank_ref.rhTriggers[mem_pkt->row - 1] >
+                    bank_ref.rhTriggers[mem_pkt->row + 1] - 4 * delta &&
+                    bank_ref.rhTriggers[mem_pkt->row - 1] <
+                    bank_ref.rhTriggers[mem_pkt->row + 1] + 4 * delta) {
+            // this is an edge row.
+            single_sided = true;
+            }
         }
 
-        bank_ref.rhTriggers[mem_pkt->row + 1] = 0;
+        if(single_sided) {
+            srand(time(NULL));
+            int prob = rand() % 10000000 + 1;
+            if(prob <= 10)
+                // flip a bit!
+                bitflip_status = true;
+        }
+
+        if(bitflip_status) {
+            DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d\n", mem_pkt->addr,
+                    bank_ref.bank, mem_pkt->row + 1);
+
+            // Also, need to figure out if the accessed
+            // column is flippable or not, and if it has
+            // previously been flipped
+            // also reset the trigger counter (by looking at weakColumns)
+            // If this access is turned out to be corrupted, we will
+            // reset that bit in the weakColumns, so that the future
+            // accesses of the column will not induce a bit flip
+
+            if (bank_ref.weakColumns[mem_pkt->row + 1].test(0)) {
+                // this condition needs to be fixed/verified.
+                mem_pkt->corruptedAccess = true;
+                bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
+            }
+
+            bank_ref.rhTriggers[mem_pkt->row + 1] = 0;
+        }
     }
 }
 
@@ -498,8 +595,8 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                     // this row to the trr_table or we just continue with our
                     // experiments This row has more acts than the threshold
 
-                    // std::cout << bank_ref.companion_table[companion_idx][0] <<
-                    //     " " << bank_ref.companion_table[companion_idx][1] <<
+                    // std::cout << bank_ref.companion_table[companion_idx][0]
+                    // << " " << bank_ref.companion_table[companion_idx][1] <<
                     //     " " << bank_ref.companion_table[companion_idx][2] <<
                     //     " " << bank_ref.companion_table[companion_idx][3] <<
                     //     std::endl;
@@ -508,15 +605,16 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                             > companionThreshold) {
                         // We insert this row in the trr_table
                         // is there space?
-                        // kg: Find out if there is space in the TRR table for a
-                        // new row insertion
+                        // kg: Find out if there is space in the TRR table for
+                        // a new row insertion
                         int trr_idx = 0;
                         // std :: cout << "__x called" << std :: endl;
                         
                         // There is space in the trr table for a new row.
                         if(bank_ref.entries < counterTableLength) {
                             trr_idx = (int)bank_ref.entries;
-                            // std :: cout << "_x " << trr_idx << " " << bank_ref.entries << std :: endl;
+                            // std :: cout << "_x " << trr_idx << " " <<
+                            // bank_ref.entries << std :: endl;
                             if(bank_ref.entries < counterTableLength - 1)
                                 bank_ref.entries++;
                         }
@@ -561,6 +659,19 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
                         bank_ref.companion_entries--;
                         // std::cout << "end" << std::endl;
+                        // if(bank_ref.companion_entries == 0) {
+                        //     // print the companion table
+                        //     for (int i = 0 ; i < std :: max(
+                        //             companionTableLength,
+                        //             bank_ref.companion_entries); i++) {
+                        //         std :: cout << bank_ref.companion_entries[i][0]
+                        //             << " " << bank_ref.companion_entries[i][1]
+                        //             << " " << bank_ref.companion_entries[i][2]
+                        //             << " " << bank_ref.companion_entries[i][3]
+                        //             << std :: endl;
+                        //     }
+
+                        // }
                         assert(bank_ref.companion_entries >= 0 &&
                                 bank_ref.companion_entries < companionTableLength);
                     }
@@ -2139,7 +2250,7 @@ DRAMInterface::Rank::processRefreshEvent()
         // opposed to a TRR table which keeps a track of all the RH attacks and
         // is also responsible for flipping bits.
 
-        if (dram.refreshCounter == 8192) {
+        if (dram.refreshCounter == 4096) {
             std :: cout << "Refershed" << std :: endl;
 
             // reset the threshold counters. this depends on the trr variant
@@ -2172,7 +2283,7 @@ DRAMInterface::Rank::processRefreshEvent()
             }
         }
 
-        if (dram.refreshCounter == 8192) {
+        if (dram.refreshCounter == 4096) {
             // these counters are for the general rowhammer detection.
             // reset the threshold counters
             for (auto &b : banks) {
