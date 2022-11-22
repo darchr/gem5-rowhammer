@@ -39,9 +39,9 @@ scons build/X86/gem5.opt
 ./build/X86/gem5.opt configs/example/gem5_library/x86-ubuntu-run-with-kvm.py
 ```
 """
-
 import os
-from gem5.resources.resource import CustomResource, CustomDiskImageResource
+
+from numpy import partition
 from gem5.utils.requires import requires
 from gem5.components.boards.x86_board import X86Board
 from gem5.components.memory.single_channel import SingleChannelDDR3_1600
@@ -51,7 +51,7 @@ from gem5.components.processors.simple_switchable_processor import (
 from gem5.components.processors.cpu_types import CPUTypes
 from gem5.isas import ISA
 from gem5.coherence_protocol import CoherenceProtocol
-from gem5.resources.resource import Resource
+from gem5.resources.resource import *
 from gem5.simulate.simulator import Simulator
 from gem5.simulate.exit_event import ExitEvent
 
@@ -59,19 +59,19 @@ from gem5.simulate.exit_event import ExitEvent
 # MESI Two Level coherence protocol.
 requires(
     isa_required=ISA.X86,
-    kvm_required=True
+    coherence_protocol_required=CoherenceProtocol.MESI_TWO_LEVEL,
+    kvm_required=True,
 )
 
-from gem5.components.cachehierarchies.classic.\
-    private_l1_private_l2_cache_hierarchy import (
+from gem5.components.cachehierarchies.classic\
+    .private_l1_private_l2_cache_hierarchy import (
     PrivateL1PrivateL2CacheHierarchy,
 )
-
 # Here we setup a MESI Two Level Cache Hierarchy.
 cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
     l1d_size="16kB",
     l1i_size="16kB",
-    l2_size="256kB"
+    l2_size="256kB",
 )
 
 # Setup the system memory.
@@ -107,24 +107,21 @@ board = X86Board(
 # then, again, call `m5 exit` to terminate the simulation. After simulation
 # has ended you may inspect `m5out/system.pc.com_1.device` to see the echo
 # output.
-command = "rowhammer_test"
-        # + "echo 'This is running on Timing CPU cores.';" \
-        # + "sleep 1;"
-        # + "m5 exit;"
+command = "m5 exit;" \
+        + "echo 'This is running on Timing CPU cores.';" \
+        + "sleep 1;"
 
 board.set_kernel_disk_workload(
     # The x86 linux kernel will be automatically downloaded to the if not
     # already present.
-    kernel=CustomResource(
-        os.path.join(
-            os.path.expanduser("~"),
-            ".cache/gem5/x86-linux-kernel-5.4.49"
-        )
-    ),
+    kernel=CustomResource(os.path.join(os.path.expanduser("~"),".cache/gem5/x86-linux-kernel-5.4.49")),
     # The x86 ubuntu image will be automatically downloaded to the if not
     # already present.
     disk_image=CustomDiskImageResource(
-        os.path.join(os.getcwd(), "rh.img"),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".cache/gem5/x86-ubuntu-18.04-img"
+        ),
         disk_root_partition = "1"
     ),
     readfile_contents=command,

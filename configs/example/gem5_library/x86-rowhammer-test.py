@@ -87,13 +87,13 @@ board.set_se_binary_workload(
     # resources. Jira ticket: https://gem5.atlassian.net/browse/GEM5-1096
     CustomResource(os.path.join(
         os.getcwd(),
-        "tests/test-progs/rowhammer/rowhammer_test")
+        "tests/test-progs/rowhammer/sequential_v2") #rowhammer_test")
     )
 )
 
 # Lastly we run the simulation.
 simulator = Simulator(board=board, full_system=False)
-simulator.run()
+simulator.run() #max_ticks = 7000000000)
 
 print(
     "Exiting @ tick {} because {}.".format(

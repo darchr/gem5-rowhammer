@@ -115,14 +115,18 @@ class MemInterface : public AbstractMemory
         uint32_t entries;
         uint32_t companion_entries;
 
+        // we need aggressor rows to determine whether a given attack is a
+        // single sided or a double sided rowhammer
+        std::vector<long int> aggressor_rows;
+
         std::vector<long int> rhTriggers;
         std::vector<std::bitset<1024>> weakColumns;
 
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
-            rowAccesses(0), bytesAccessed(0), rhTriggers(0), weakColumns(0),
-            entries(0), companion_entries(0)
+            rowAccesses(0), bytesAccessed(0), entries(0), companion_entries(0),
+            aggressor_rows(0), rhTriggers(0), weakColumns(0)
         {
         trr_table.resize(6, std::vector<uint64_t>(4)); 
         companion_table.resize(6, std::vector<uint64_t>(4));
