@@ -323,7 +323,7 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
     bool single_sided = true, bitflip_status = false;
 
     if (bank_ref.rhTriggers[mem_pkt->row - 1]  >= rowhammerThreshold) {
-        // std::cout << mem_pkt->row - 1 << " " << bank_ref.rhTriggers[mem_pkt->row - 1] << " " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
+        // std::cout << mem_pkt->row - 1 << " " << bank_ref.rhTriggers[mem_pkt->row - 1] << std::endl; //" " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
         // this is a compound probability factor with a tunable parameter
         // for double rowhammer attacks
 
@@ -360,24 +360,38 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // }
         // check this->row is an aggressor row and then check for its neighbors
         if(bank_ref.aggressor_rows[mem_pkt->row] >= rowhammerThreshold/2 &&
-            (bank_ref.aggressor_rows[mem_pkt->row - 2] >= rowhammerThreshold/2
-            || bank_ref.aggressor_rows[mem_pkt->row + 2] >=
-            rowhammerThreshold/2)) {
+            bank_ref.aggressor_rows[mem_pkt->row - 2] >= rowhammerThreshold/2) {
                 single_sided = false;
                 bitflip_status = true;
+                // std::cout << mem_pkt->row - 1 << " " << bank_ref.aggressor_rows[mem_pkt->row] << " " << bank_ref.aggressor_rows[mem_pkt->row - 2] <<  std::endl;
             }
 
         if(single_sided) {
+            // tunable probability
             srand(time(NULL));
-            int prob = rand() % 10000000 + 1;
-            if(prob <= 10)
+            uint64_t prob = rand() % singleSidedProb + 1;
+            if(prob <= 1)
                 // flip a bit!
                 bitflip_status = true;
         }
 
         if(bitflip_status) {
-            DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d, single-sided %d\n", mem_pkt->addr,
-                    bank_ref.bank, mem_pkt->row - 1, single_sided);
+            if(rhStatDump) {
+                std::ofstream outfile;
+                outfile.open("m5out/rowhammer.trace",
+                        std::ios::out | std::ios::app);
+
+                outfile << "Bitflip at 0x" << std::hex << mem_pkt->addr <<
+                        std::dec << " bank " << (int)bank_ref.bank << " row "
+                        << mem_pkt->row - 1 << " single-sided " << single_sided
+                        << std::endl;
+                
+                outfile.close();
+            }
+            DPRINTF(RhBitflip, 
+                    "Bitflip at %#x, bank %d, row %d, single-sided %d\n",
+                    mem_pkt->addr, bank_ref.bank, mem_pkt->row - 1,
+                    single_sided);
 
             // Also, need to figure out if the accessed
             // column is flippable or not, and if it has
@@ -392,14 +406,16 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
                 mem_pkt->corruptedAccess = true;
                 bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
             }
-
-            bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
         }
+        // regardless of this row being a single or a double sided attack, its
+        // rowhammer counter will be set to zero.    
+        bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
     }
 
     single_sided = true, bitflip_status = false;
 
     if (bank_ref.rhTriggers[mem_pkt->row + 1]  >= rowhammerThreshold) {
+        // std::cout << mem_pkt->row + 1 << " " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
 
         // this is a compound probability factor with a tunable parameter
         // for double rowhammer attacks
@@ -438,16 +454,16 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 
         // check this->row is an aggressor row and then check for its neighbors
         if(bank_ref.aggressor_rows[mem_pkt->row] >= rowhammerThreshold/2 &&
-            (bank_ref.aggressor_rows[mem_pkt->row - 2] >= rowhammerThreshold/2
-            || bank_ref.aggressor_rows[mem_pkt->row + 2] >=
-            rowhammerThreshold/2)) {
+            bank_ref.aggressor_rows[mem_pkt->row + 2] >=
+            rowhammerThreshold/2) {
                 single_sided = false;
                 bitflip_status = true;
             }
 
         if(single_sided) {
+            // tunable probability
             srand(time(NULL));
-            int prob = rand() % 10000000 + 1;
+            uint64_t prob = rand() % singleSidedProb + 1;
             if(prob <= 10)
                 // flip a bit!
                 bitflip_status = true;
@@ -455,8 +471,22 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 
 
         if(bitflip_status) {
-            DPRINTF(RhBitflip, "Bitflip at %#x, bank %d, row %d, single-sided %d\n", mem_pkt->addr,
-                    bank_ref.bank, mem_pkt->row - 1, single_sided);
+            if(rhStatDump) {
+                std::ofstream outfile;
+                outfile.open("m5out/rowhammer.trace",
+                        std::ios::out | std::ios::app);
+
+                outfile << "Bitflip at 0x" << std::hex << mem_pkt->addr <<
+                        std::dec << " bank " << (int)bank_ref.bank << " row "
+                        << mem_pkt->row + 1 << " single-sided " << single_sided
+                        << std::endl;
+                
+                outfile.close();
+            }
+            DPRINTF(RhBitflip, 
+                    "Bitflip at %#x, bank %d, row %d, single-sided %d\n",
+                    mem_pkt->addr, bank_ref.bank, mem_pkt->row + 1,
+                    single_sided);
 
             // Also, need to figure out if the accessed
             // column is flippable or not, and if it has
@@ -484,15 +514,30 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
 
     //std::cout << "UV : " << bank_ref.bank << "rhTriggers size " << bank_ref.rhTriggers.size() << std::endl;
 
-    if (row != 0) {
-        bank_ref.rhTriggers[row-1]++;
+    // both sides of the aggressor row has to be incremented
+
+    assert(row != rowsPerBank);
+    // std::cout << row << std::endl;
+
+    if(row == 0)
+        bank_ref.rhTriggers[row + 1]++;
+    else if(row == rowsPerBank - 1)
+        bank_ref.rhTriggers[row - 1]++;
+    else {
+        bank_ref.rhTriggers[row - 1]++;
+        bank_ref.rhTriggers[row + 1]++;
     }
 
-    // just to check my assumption that row numbers always start from 0
-    assert(row != rowsPerBank);
-    if (row != (rowsPerBank-1)) {
-        bank_ref.rhTriggers[row+1]++;
-    }
+
+    // if (row != 0) {
+    //     bank_ref.rhTriggers[row-1]++;
+    // }
+
+    // // just to check my assumption that row numbers always start from 0
+    // assert(row != rowsPerBank);
+    // if (row != (rowsPerBank-1)) {
+    //     bank_ref.rhTriggers[row+1]++;
+    // }
 
     // making sure that the activated row has its counter
     // set to 0, only in case if it has not already been corrupted
@@ -520,6 +565,21 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         act_at = ctrl->verifyMultiCmd(act_tick, maxCommandsPerWindow, tAAD);
     else
         act_at = ctrl->verifySingleCmd(act_tick, maxCommandsPerWindow);
+    
+    if(!first_act) {
+        // first access to memory.
+        first_act = true;
+        DPRINTF(DRAM, "Memory was first ACTed at tick %d\n", act_at);
+
+        if(rhStatDump) {
+            // need to start the stat dumper here
+            std::ofstream outfile;
+            outfile.open("m5out/rowhammer.trace", std::ios::out | std::ios::trunc );
+            outfile << "# starting to capture row access for rowhammer analysis" <<
+            std::endl;
+            outfile.close();
+        }
+    }
 
     DPRINTF(DRAM, "Activate at tick %d\n", act_at);
 
@@ -1326,6 +1386,7 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // kg: now, if we access a row, its rhtrigger counter has to be set to 0.
     // this is because we accessed the row. this can potentially become the
     // starting point for context sensitive rowhammer analysis.
+    // std::cout << mem_pkt->row << " " << bank_ref.rhTriggers[mem_pkt->row] << " " << bank_ref.rhTriggers[293] << std::endl;
 
     bank_ref.rhTriggers[mem_pkt->row] = 0;
 
@@ -1383,6 +1444,8 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       trrThreshold(_p.trr_threshold),
       companionTableLength(_p.companion_table_length),
       companionThreshold(_p.companion_threshold),
+      singleSidedProb(_p.single_sided_prob),
+      rhStatDump(_p.rh_stat_dump),
       pageMgmt(_p.page_policy),
       maxAccessesPerRow(_p.max_accesses_per_row),
       timeStampOffset(0), activeRank(0),
@@ -2150,6 +2213,16 @@ DRAMInterface::Rank::processRefreshEvent()
         // increment the refresh counter
         dram.refreshCounter++;
 
+        // cannot have a bitflip until this point
+        // std::cout << "REF" << std::endl;
+        // for(auto &b: banks) {
+        //     if(b.bank == 0) {
+        //         std::cout << b.rhTriggers[291] << " " << b.rhTriggers[292] << " " << b.rhTriggers[293] << " " << b.rhTriggers[294] << " " << b.rhTriggers[295] << " " << std::endl;
+        //         int dummy;
+        //         std::cin >> dummy;
+        //     }
+        // }
+
         int num_neighbor_rows = 0;
 
         // the trr implementation is different than the og version implemented
@@ -2163,15 +2236,15 @@ DRAMInterface::Rank::processRefreshEvent()
                 // This is no TRR Variant. It does absolutely nothing.
                 break;
             case 1:
-                // TRR variant A always picks exactly 1 row with the
+                // TRR variant A always picks exactly 2 rows with the
                 // highest activation count.
-                num_neighbor_rows = 1;
+                num_neighbor_rows = 2;
                 // ensure that the number of rows to be refreshed is not 0
 
                 if (dram.refreshCounter % 9 == 0) {
                     // We need to traverse all the TRR tables per bank to find
                     // out which row to refresh.
-
+                    std::cout << dram.refreshCounter << std::endl;
                     // We iterate over all the tables of each bank
                     for(auto &b: banks) {
 
@@ -2233,11 +2306,14 @@ DRAMInterface::Rank::processRefreshEvent()
 
                             // need to reset the rhTriggers too for the victim
                             // rows.
+                            std::cout << b.trr_table[max_idx][2] << std::endl;
                             for(int j = 0 ; j < num_neighbor_rows; j++) {
+                                std::cout << b.trr_table[max_idx][2] << " " << j << " " << b.trr_table[max_idx][2] - j - 1 << " " << b.trr_table[max_idx][2] + j + 1 << " " << b.rhTriggers[293] << " ";
                                 b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
                                         = 0;
                                 b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
                                         = 0;
+                                std::cout << b.rhTriggers[b.trr_table[max_idx][2] - j - 1] << " " << b.rhTriggers[b.trr_table[max_idx][2] + j + 1] << std::endl;
                             // this logic should be bypassed when the number of
                             // aggressor rows will be more than the trr_table's
                             // size.
@@ -2397,6 +2473,16 @@ DRAMInterface::Rank::processRefreshEvent()
 
             switch(dram.trrVariant) {
                 case 0:
+                    if(dram.rhStatDump) {
+                        if(dram.refreshCounter == 8192) {
+                            std::ofstream outfile;
+                            outfile.open("m5out/rowhammer.trace",
+                                    std::ios::out | std::ios::app );
+                            outfile << "# dumping counters before refresh!" <<
+                                    std::endl;
+                            outfile.close();
+                        }
+                    }
                     break;
                 case 1: 
                     // there must be no cross variable initialziations.

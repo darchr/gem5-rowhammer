@@ -88,7 +88,13 @@ class DRAMInterface(MemInterface):
 
     # This is similar to trr_stat_dump.
     rh_stat_dump = Param.Bool(False, "Set this to True to dump RH triggers"\
-                                    "and generate a RH trace")
+                                    "and generate a RH trace. The trace is "\
+                                    "named as `rowhammer.trace`")
+
+    # Single-sided rowhammer probability.
+    single_sided_prob = Param.Unsigned(int(1e6), "Number of double-sided RH "\
+                                        "bitflips observed before observing "\
+                                        "at least 1 single-sided bitflip.")
 
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")

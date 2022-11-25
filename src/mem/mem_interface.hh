@@ -797,8 +797,11 @@ class DRAMInterface : public MemInterface
     const uint32_t companionTableLength;
     const uint32_t companionThreshold;
 
-    uint64_t num_trr_refreshes = 0;
+    const uint64_t singleSidedProb;
 
+    uint64_t num_trr_refreshes = 0;
+    bool first_act = false;
+    const bool rhStatDump;
     enums::PageManage pageMgmt;
     /**
      * Max column accesses (read and write) per row, before forefully
