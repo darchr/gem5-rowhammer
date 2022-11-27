@@ -519,16 +519,35 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     assert(row != rowsPerBank);
     // std::cout << row << std::endl;
 
-    if(row == 0)
-        bank_ref.rhTriggers[row + 1]++;
-    else if(row == rowsPerBank - 1)
-        bank_ref.rhTriggers[row - 1]++;
-    else {
-        bank_ref.rhTriggers[row - 1]++;
-        bank_ref.rhTriggers[row + 1]++;
+    // inner vector 0, 1, 2, 3 --> 0, 1 are two rows above 
+    // and 2,3 are two rows below the given row. So, we 
+    // need to set the index which corresponds to the location
+    // of the activated row realtive to the given row
+
+    if (row <= 1 || row >= rowsPerBank-2) {
+        if(row == 0) {
+            bank_ref.rhTriggers[row + 1][1]++;
+            bank_ref.rhTriggers[row + 2][0]++
+        } else if (row == 1) {
+            bank_ref.rhTriggers[row - 1][2]++;
+            bank_ref.rhTriggers[row + 1][1]++;
+            bank_ref.rhTriggers[row + 2][0]++
+        } else if(row == rowsPerBank - 1) {
+            bank_ref.rhTriggers[row - 2][3]++;
+            bank_ref.rhTriggers[row - 1][2]++;
+        }
+        } else if(row == rowsPerBank - 2) {
+            bank_ref.rhTriggers[row - 2][3]++;
+            bank_ref.rhTriggers[row - 1][2]++;
+            bank_ref.rhTriggers[row + 1][1]++;
+        }
     }
-
-
+    else {
+        bank_ref.rhTriggers[row - 2][3]++;
+        bank_ref.rhTriggers[row - 1][2]++;
+        bank_ref.rhTriggers[row + 1][1]++;
+        bank_ref.rhTriggers[row + 2][0]++;
+    }
     // if (row != 0) {
     //     bank_ref.rhTriggers[row-1]++;
     // }
@@ -543,9 +562,11 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     // set to 0, only in case if it has not already been corrupted
     // once we return flipped data, we can reset the rhTriggers for that
     // row to restart the flipping cycle
-    if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
-        bank_ref.rhTriggers[row] = 0;
-    }
+    // AYAZ: let's not worry about it specially when the analysis
+    // is the main concern.
+    //if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+    //    bank_ref.rhTriggers[row] = 0;
+    //}
 
     // kg: the same needs to be done to the trr tables as well
     //     the trr tables are reset (if necessary) in the refresh section,
@@ -1494,6 +1515,12 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
             {
                 // AYAZ: Also initialize the rowhammer activates vector
                 ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
+                for (int rt = 0; rt < rowsPerBank; rt++) {
+                    // we are keeping  track of four neighbouring rows
+                    // around a victim row.
+                    ranks[r]->banks[b].rhTriggers[rt].resize(4, 0);
+                }
+                
                 ranks[r]->banks[b].aggressor_rows.resize(rowsPerBank, 0);
                 // AYAZ: initializing every column with flip bit set
                 // Need to consult the device map here and set the weak

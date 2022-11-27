@@ -119,7 +119,7 @@ class MemInterface : public AbstractMemory
         // single sided or a double sided rowhammer
         std::vector<long int> aggressor_rows;
 
-        std::vector<long int> rhTriggers;
+        std::vector<std::vector <long int>> rhTriggers;
         std::vector<std::bitset<1024>> weakColumns;
 
         Bank() :
