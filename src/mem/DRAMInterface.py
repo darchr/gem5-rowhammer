@@ -51,6 +51,10 @@ class DRAMInterface(MemInterface):
     cxx_header = "mem/dram_interface.hh"
     cxx_class = 'gem5::memory::DRAMInterface'
 
+    trace_file = Param.String('rowhammer.trace',"File for trace")
+
+    rowhammer_threshold = Param.Int(50000, "Activation threshold")
+
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")
 

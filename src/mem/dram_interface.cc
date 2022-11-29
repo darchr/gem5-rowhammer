@@ -47,6 +47,7 @@
 #include "debug/DRAMPower.hh"
 #include "debug/DRAMState.hh"
 #include "sim/system.hh"
+#include "sim/core.hh"
 
 namespace gem5
 {
@@ -171,10 +172,21 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
     return std::make_pair(selected_pkt_it, selected_col_at);
 }
 
+int
+DRAMInterface::sumRowCounters(Bank& bank_ref, int row_index)
+{
+    int sum_of_counters = 0;
+    for (int i=0; i < 4; i++) {
+        sum_of_counters = sum_of_counters +
+                            bank_ref.rhTriggers[row_index][i];
+    }
+    return sum_of_counters;
+}
+
 void
 DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
-    if (bank_ref.rhTriggers[mem_pkt->row]  >= rowhammerThreshold) {
+    if (sumRowCounters(bank_ref, mem_pkt->row) >= rowhammerThreshold) {
 
         // Also, need to figure out if the accessed
         // column is flippable or not, and if it has
@@ -191,7 +203,8 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         //    bank_ref.weakColumns[mem_pkt->row].reset((mem_pkt->col)*8);
         //}
 
-        bank_ref.rhTriggers[mem_pkt->row] = 0;
+        //not reseting the counters
+        //bank_ref.rhTriggers[mem_pkt->row] = 0;
     }
 }
 
@@ -202,23 +215,42 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
 
     //std::cout << "UV : " << bank_ref.bank << "rhTriggers size " << bank_ref.rhTriggers.size() << std::endl;
 
-    if (row != 0) {
-        bank_ref.rhTriggers[row-1]++;
-    }
-
     // just to check my assumption that row numbers always start from 0
     assert(row != rowsPerBank);
-    if (row != (rowsPerBank-1)) {
-        bank_ref.rhTriggers[row+1]++;
+
+    if ((row <= 1) || (row >= rowsPerBank-2)) {
+        if(row == 0) {
+            bank_ref.rhTriggers[row + 1][1]++;
+            bank_ref.rhTriggers[row + 2][0]++;
+        } else if (row == 1) {
+            bank_ref.rhTriggers[row - 1][2]++;
+            bank_ref.rhTriggers[row + 1][1]++;
+            bank_ref.rhTriggers[row + 2][0]++;
+        } else if(row == rowsPerBank - 1) {
+            bank_ref.rhTriggers[row - 2][3]++;
+            bank_ref.rhTriggers[row - 1][2]++;
+        } else if(row == rowsPerBank - 2) {
+            bank_ref.rhTriggers[row - 2][3]++;
+            bank_ref.rhTriggers[row - 1][2]++;
+            bank_ref.rhTriggers[row + 1][1]++;
+        }
+    }
+    else {
+        bank_ref.rhTriggers[row - 2][3]++;
+        bank_ref.rhTriggers[row - 1][2]++;
+        bank_ref.rhTriggers[row + 1][1]++;
+        bank_ref.rhTriggers[row + 2][0]++;
     }
 
     // making sure that the activated row has its counter
     // set to 0, only in case if it has not already been corrupted
     // once we return flipped data, we can reset the rhTriggers for that
     // row to restart the flipping cycle
-    if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
-        bank_ref.rhTriggers[row] = 0;
-    }
+    // AYAZ: let's not worry about it specially when the analysis
+    // is the main concern.
+    //if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+    //    bank_ref.rhTriggers[row] = 0;
+    //}
 }
 
 
@@ -695,6 +727,7 @@ DRAMInterface::addRankToRankDelay(Tick cmd_at)
 
 DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
     : MemInterface(_p),
+      rowhammerThreshold(_p.rowhammer_threshold),
       bankGroupsPerRank(_p.bank_groups_per_rank),
       bankGroupArch(_p.bank_groups_per_rank > 0),
       tRL(_p.tCL),
@@ -730,6 +763,11 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
     fatal_if(!isPowerOf2(ranksPerChannel), "DRAM rank count of %d is "
              "not allowed, must be a power of two\n", ranksPerChannel);
 
+    traceStream = simout.create(_p.trace_file, false, true);
+    if (!traceStream)
+        fatal("unable to open rowhammer trace file");
+
+
     for (int i = 0; i < ranksPerChannel; i++) {
         DPRINTF(DRAM, "Creating DRAM rank %d \n", i);
         Rank* rank = new Rank(_p, i, *this);
@@ -760,7 +798,12 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
         for (int b = 0; b < ranks[r]->banks.size(); b++)
             {
                 // AYAZ: Also initialize the rowhammer activates vector
-                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
+                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank);
+                 for (int rt = 0; rt < rowsPerBank; rt++) {
+                    // we are keeping  track of four neighbouring rows
+                    // around a victim row.
+                    ranks[r]->banks[b].rhTriggers[rt].resize(4, 0);
+                }
                 // AYAZ: initializing every column with flip bit set
                 // Need to consult the device map here and set the weak
                 // columns accordingly
@@ -1527,34 +1570,39 @@ DRAMInterface::Rank::processRefreshEvent()
         // increment the refresh counter
         dram.refreshCounter++;
 
-
         if (dram.refreshCounter % 4 == 0) {
 
             // need to dump the trigger counter information here as well
 
             // reset the threshold counters
             for (auto &b : banks) {
-            //for (int row_index = 0; row_index < dram.rowsPerBank;
-            //        row_index++) {
 
             if (dram.rowIndex == dram.rowsPerBank) {
                 // time to reset the row_index
                 dram.rowIndex = 0;
             }
 
+            if (dram.sumRowCounters(b, dram.rowIndex) >= dram.rowhammerThreshold) {
+                *dram.traceStream->stream() << unsigned(b.bank) << "," << dram.rowIndex;
 
-            if (b.rhTriggers[dram.rowIndex] >= 100) {
-                        std::cout << unsigned(b.bank) << "," << dram.rowIndex << "," << b.rhTriggers[dram.rowIndex] << std::endl;
-                    }
-
-            b.rhTriggers[dram.rowIndex] = 0;
+                for (int i=0; i < 4; i++) {
+                    *dram.traceStream->stream() << ",";
+                    *dram.traceStream->stream() << b.rhTriggers[dram.rowIndex][i];
+                    //resetting the counter
+                    //b.rhTriggers[dram.rowIndex][i] = 0;
+                    //not resetting it so that the
+                    //cases where we might see flip again can be
+                    //taken care of
+                }
+                *dram.traceStream->stream() << std::endl;
+            }
         }
 
         if (dram.refreshCounter == 8192) {
             // don't really need to do this
             // But, the following stars will
             // indicate the end of a refresh window
-            std::cout << "**" << std::endl;
+            *dram.traceStream->stream() << "**" << std::endl;
             dram.refreshCounter = 0;
         }
 

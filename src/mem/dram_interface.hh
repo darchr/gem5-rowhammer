@@ -49,6 +49,7 @@
 #include "mem/drampower.hh"
 #include "mem/mem_interface.hh"
 #include "params/DRAMInterface.hh"
+#include "base/output.hh"
 
 namespace gem5
 {
@@ -478,6 +479,20 @@ class DRAMInterface : public MemInterface
         return cmd.timeStamp < cmd_next.timeStamp;
     }
 
+    //AYAZ: Rowhammer activation threshold
+    const uint32_t rowhammerThreshold;
+
+    //AYAZ: the path to the device file with
+    // the information on weak columns
+    std::string deviceFile;
+
+    //std::string traceFile;
+    OutputStream *traceStream;
+
+    //AYAZ: Rowhammer refresh counter
+    int refreshCounter = 0;
+    int rowIndex = 0;
+
     /**
      * DRAM specific device characteristics
      */
@@ -515,17 +530,6 @@ class DRAMInterface : public MemInterface
     const uint32_t activationLimit;
     const Tick wrToRdDlySameBG;
     const Tick rdToWrDlySameBG;
-
-    //AYAZ: Rowhammer activation threshold
-    const uint32_t rowhammerThreshold = 50000;
-
-    //AYAZ: the path to the device file with
-    // the information on weak columns
-    std::string deviceFile;
-
-    //AYAZ: Rowhammer refresh counter
-    int refreshCounter = 0;
-    int rowIndex = 0;
 
     enums::PageManage pageMgmt;
     /**
@@ -576,6 +580,8 @@ class DRAMInterface : public MemInterface
      * @param col index of the column in the row
      */
     void checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt);
+
+    int sumRowCounters(Bank& bank_ref, int row_index);
 
     /**
      * Precharge a given bank and also update when the precharge is
