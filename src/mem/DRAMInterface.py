@@ -53,7 +53,7 @@ class DRAMInterface(MemInterface):
 
     trace_file = Param.String('rowhammer.trace',"File for trace")
 
-    rowhammer_threshold = Param.Int(50000, "Activation threshold")
+    rowhammer_threshold = Param.Int(500, "Activation threshold")
 
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")
