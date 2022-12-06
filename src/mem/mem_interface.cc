@@ -53,6 +53,7 @@
 #include <sstream>
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 #include<stdlib.h>
 #include<time.h>
 
@@ -312,6 +313,64 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
 void
 DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 {
+
+    // next stop: half-double
+    // | row - 4 |
+    // | row - 3 |
+    // | row - 2 |  <-- bitflips here
+    // | row - 1 |
+    // | row     |
+    // | row + 1 |
+    // | row + 2 |  <-- birflips here
+    // | row + 3 |
+    // | row - 4 |
+
+    if(bank_ref.rhTriggers[mem_pkt->row][0] >= 5 && bank_ref.rhTriggers[mem_pkt->row][1] >= rowhammerThreshold) {
+        // half-double is rare. so we have to adjust the probability by a
+        // very large factor.
+    std::cout << mem_pkt->row << " \n" << bank_ref.rhTriggers[mem_pkt->row][0] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row][1] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row][2] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row][3] << " " <<
+            std::endl << bank_ref.rhTriggers[mem_pkt->row - 1][0] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 1][1] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 1][2] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 1][3] << " " <<
+            std::endl << bank_ref.rhTriggers[mem_pkt->row - 2][0] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 2][1] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 2][2] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row - 2][3] << " " << 
+            std::endl << bank_ref.rhTriggers[mem_pkt->row + 1][0] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row + 1][1] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row + 1][2] << " " <<
+            bank_ref.rhTriggers[mem_pkt->row + 1][3] << " " << std::endl;
+
+
+        // flip bit here
+        if (bank_ref.weakColumns[mem_pkt->row - 2].test(0)) {
+            // this condition needs to be fixed/verified.
+            mem_pkt->corruptedAccess = true;
+            bank_ref.weakColumns[mem_pkt->row - 2].reset(0);
+        }
+        DPRINTF(RhBitflip,
+                "HD Bitflip at %#x, bank %d, row %d\n",
+                mem_pkt->addr, bank_ref.bank, mem_pkt->row - 2);
+    }
+
+    if(bank_ref.rhTriggers[mem_pkt->row][3] >= 5 && bank_ref.rhTriggers[mem_pkt->row][2] >= rowhammerThreshold) {
+        // half-double is rare. so we have to adjust the probability by a
+        // very large factor.
+
+        // flip bit here
+        if (bank_ref.weakColumns[mem_pkt->row + 2].test(0)) {
+            // this condition needs to be fixed/verified.
+            mem_pkt->corruptedAccess = true;
+            bank_ref.weakColumns[mem_pkt->row + 2].reset(0);
+        }
+        DPRINTF(RhBitflip,
+                "HD Bitflip at %#x, bank %d, row %d\n",
+                mem_pkt->addr, bank_ref.bank, mem_pkt->row + 2);
+    }
     // DPRINTF(RhBitflip, "Counter for %#x, bank %d, row %d, counter - 1 %d, "
     //         "counter + 1 %d\n",
     //         mem_pkt->addr, bank_ref.bank, mem_pkt->row,
@@ -322,7 +381,12 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 
     bool single_sided = true, bitflip_status = false;
 
-    if (bank_ref.rhTriggers[mem_pkt->row - 1]  >= rowhammerThreshold) {
+    // std::cout << bank_ref.rhTriggers[mem_pkt->row][0] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][1] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][2] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][3] << " " <<
+    //         std::endl;
+    if (bank_ref.rhTriggers[mem_pkt->row][1]  >= rowhammerThreshold) {
         // std::cout << mem_pkt->row - 1 << " " << bank_ref.rhTriggers[mem_pkt->row - 1] << std::endl; //" " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
         // this is a compound probability factor with a tunable parameter
         // for double rowhammer attacks
@@ -408,13 +472,24 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
             }
         }
         // regardless of this row being a single or a double sided attack, its
-        // rowhammer counter will be set to zero.    
-        bank_ref.rhTriggers[mem_pkt->row - 1] = 0;
+        // rowhammer counter will be set to zero.
+
+        // since now that rhtriggers is a vector, we need to take care of all
+        // the entries.
+
+        // we cannot flip the same bit, but we can flip the same row.
+        // TODO: uncomment these lines if you want to
+
+        bank_ref.rhTriggers[mem_pkt->row][1] = 0;
+        bank_ref.rhTriggers[mem_pkt->row - 2][2] = 0;
+        bank_ref.rhTriggers[mem_pkt->row - 3][3] = 0;
+        bank_ref.rhTriggers[mem_pkt->row + 1][0] = 0;
+
     }
 
     single_sided = true, bitflip_status = false;
 
-    if (bank_ref.rhTriggers[mem_pkt->row + 1]  >= rowhammerThreshold) {
+    if (bank_ref.rhTriggers[mem_pkt->row][2]  >= rowhammerThreshold) {
         // std::cout << mem_pkt->row + 1 << " " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
 
         // this is a compound probability factor with a tunable parameter
@@ -502,7 +577,13 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
                 bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
             }
 
-            bank_ref.rhTriggers[mem_pkt->row + 1] = 0;
+            // similar to the statement above, we do the same here.
+
+            bank_ref.rhTriggers[mem_pkt->row + 3][0] = 0;
+            bank_ref.rhTriggers[mem_pkt->row + 2][1] = 0;
+            bank_ref.rhTriggers[mem_pkt->row][2] = 0;
+            bank_ref.rhTriggers[mem_pkt->row - 1][3] = 0;
+
         }
     }
 }
@@ -519,15 +600,42 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     assert(row != rowsPerBank);
     // std::cout << row << std::endl;
 
-    if(row == 0)
-        bank_ref.rhTriggers[row + 1]++;
-    else if(row == rowsPerBank - 1)
-        bank_ref.rhTriggers[row - 1]++;
-    else {
-        bank_ref.rhTriggers[row - 1]++;
-        bank_ref.rhTriggers[row + 1]++;
-    }
+    // the difference between this version and rh-analysis is that instead of
+    // measuing blast radius = 2
+    // we need to increment +2 counters if +1 counters reach 1000.
+    // slow
 
+    if ((row <= 1) || (row >= rowsPerBank-2)) {
+        if(row == 0) {
+            if(bank_ref.rhTriggers[row][1]++ % 1024 == 0)
+                bank_ref.rhTriggers[row][0]++;
+        } else if (row == 1) {
+            bank_ref.rhTriggers[row][2]++;
+            bank_ref.rhTriggers[row][1]++;
+            bank_ref.rhTriggers[row][0]++;
+        } else if(row == rowsPerBank - 1) {
+            bank_ref.rhTriggers[row][3]++;
+            bank_ref.rhTriggers[row][2]++;
+        } else if(row == rowsPerBank - 2) {
+            bank_ref.rhTriggers[row][3]++;
+            bank_ref.rhTriggers[row][2]++;
+            bank_ref.rhTriggers[row][1]++;
+        }
+    }
+    else {
+        // modifying this logic
+        // nbd first.
+        bank_ref.rhTriggers[row][1]++;
+        bank_ref.rhTriggers[row][3]++;
+
+        // %1000 increment for the far counters. adjusted the count by 1.
+
+        if(bank_ref.rhTriggers[row][1] % 999 == 0)
+            bank_ref.rhTriggers[row][0]++;
+        
+        if(bank_ref.rhTriggers[row][2] % 999 == 0)
+            bank_ref.rhTriggers[row][3]++;
+    }
 
     // if (row != 0) {
     //     bank_ref.rhTriggers[row-1]++;
@@ -543,9 +651,10 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     // set to 0, only in case if it has not already been corrupted
     // once we return flipped data, we can reset the rhTriggers for that
     // row to restart the flipping cycle
-    if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
-        bank_ref.rhTriggers[row] = 0;
-    }
+
+    // if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+    //     bank_ref.rhTriggers[row] = 0;
+    // }
 
     // kg: the same needs to be done to the trr tables as well
     //     the trr tables are reset (if necessary) in the refresh section,
@@ -585,6 +694,14 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
     // we have to keep a track of all the activates in the aggressor_table
     bank_ref.aggressor_rows[row]++;
+    bool act_flag = false;
+    for(auto&  it: bank_ref.activated_row_list)
+        if(it == row) {
+            act_flag = true;
+            break;
+        }
+    if(!act_flag)
+        bank_ref.activated_row_list.push_back(row);
 
     // we only model TRR for the three major DRAM vendors only.
     
@@ -715,9 +832,9 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                                 bank_ref.companion_table[companion_idx][1];
                         bank_ref.trr_table[trr_idx][2] = 
                                 bank_ref.companion_table[companion_idx][2];
-                        bank_ref.trr_table[trr_idx][3] =
+                    bank_ref.trr_table[trr_idx][3] =
                                 bank_ref.companion_table[companion_idx][3];
-                        
+                            
                         // an entry has been cleared in the companion table. we
                         // need to adjust that.
                         // replace the current idx with the last index
@@ -794,6 +911,9 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
             int select_count = 0;
             int recreated_address = bank_ref.bank + rank_ref.rank + row;
             bool selected = false;
+
+            // this rng is really difficult to implement and match it with an
+            // actual SK Hynix DIMM.
 
             while(recreated_address != 0) {
                 selected = selected ^ (recreated_address % 2);
@@ -1143,9 +1263,15 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     Bank& bank_ref = rank_ref.banks[mem_pkt->bank];
 
     if (mem_pkt->row != 0) {
-        DPRINTF(DRAM, "Rhammer triggers  %ld Previous row %ld \n", bank_ref.rhTriggers[mem_pkt->row], bank_ref.rhTriggers[(mem_pkt->row)-1]);}
+        // now that rhtirggers is a vector, there is no self rh triggers
+        DPRINTF(DRAM, "thTrigger [row] %ld [row - 1] %ld  [row - 2]\n",
+                bank_ref.rhTriggers[mem_pkt->row - 1][2],
+                bank_ref.rhTriggers[mem_pkt->row][1],
+                bank_ref.rhTriggers[mem_pkt->row][0]);
+    }
     else {
-        DPRINTF(DRAM, "Rhammer triggers  %ld \n", bank_ref.rhTriggers[mem_pkt->row]);
+        DPRINTF(DRAM, "Rhammer triggers  %ld \n",
+                bank_ref.rhTriggers[mem_pkt->row + 1][0]);
     }
 
     // for the state we need to track if it is a row hit or not
@@ -1388,7 +1514,10 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // starting point for context sensitive rowhammer analysis.
     // std::cout << mem_pkt->row << " " << bank_ref.rhTriggers[mem_pkt->row] << " " << bank_ref.rhTriggers[293] << std::endl;
 
-    bank_ref.rhTriggers[mem_pkt->row] = 0;
+    bank_ref.rhTriggers[mem_pkt->row - 1][2] = 0;
+    bank_ref.rhTriggers[mem_pkt->row - 2][3] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 1][1] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 2][0] = 0;
 
     // AYAZ: Before returning, make sure that we update the pkt to indicate
     // that the row is corrupted or not
@@ -1493,7 +1622,12 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
         for (int b = 0; b < ranks[r]->banks.size(); b++)
             {
                 // AYAZ: Also initialize the rowhammer activates vector
-                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank, 0);
+                // updating resizing to account for 4 elelemts per rhtrigger.
+                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank);
+                for (int rt = 0; rt < rowsPerBank; rt++) {
+                    // around a victim row.
+                    ranks[r]->banks[b].rhTriggers[rt].resize(4, 0);
+                }
                 ranks[r]->banks[b].aggressor_rows.resize(rowsPerBank, 0);
                 // AYAZ: initializing every column with flip bit set
                 // Need to consult the device map here and set the weak
@@ -2244,7 +2378,7 @@ DRAMInterface::Rank::processRefreshEvent()
                 if (dram.refreshCounter % 9 == 0) {
                     // We need to traverse all the TRR tables per bank to find
                     // out which row to refresh.
-                    std::cout << dram.refreshCounter << std::endl;
+                    std::cout << "refresh_counter " << dram.refreshCounter << std::endl;
                     // We iterate over all the tables of each bank
                     for(auto &b: banks) {
 
@@ -2306,18 +2440,28 @@ DRAMInterface::Rank::processRefreshEvent()
 
                             // need to reset the rhTriggers too for the victim
                             // rows.
-                            std::cout << b.trr_table[max_idx][2] << std::endl;
-                            for(int j = 0 ; j < num_neighbor_rows; j++) {
-                                std::cout << b.trr_table[max_idx][2] << " " << j << " " << b.trr_table[max_idx][2] - j - 1 << " " << b.trr_table[max_idx][2] + j + 1 << " " << b.rhTriggers[293] << " ";
-                                b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
-                                        = 0;
-                                b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
-                                        = 0;
-                                std::cout << b.rhTriggers[b.trr_table[max_idx][2] - j - 1] << " " << b.rhTriggers[b.trr_table[max_idx][2] + j + 1] << std::endl;
+                            // std::cout << b.trr_table[max_idx][2] << std::endl;
+                            // for(int j = 0 ; j < num_neighbor_rows; j++) {
+                            //     std::cout << b.trr_table[max_idx][2] << " " << j << " " << b.trr_table[max_idx][2] - j - 1 << " " << b.trr_table[max_idx][2] + j + 1 << " " << b.rhTriggers[292][2] << " ";
+                            //     b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
+                            //             = 0;
+                            //     b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
+                            //             = 0;
+                            //     std::cout << b.rhTriggers[b.trr_table[max_idx][2] - j - 2][2] << " " << b.rhTriggers[b.trr_table[max_idx][2] + j - 1][2] << std::endl;
                             // this logic should be bypassed when the number of
                             // aggressor rows will be more than the trr_table's
                             // size.
-                            }
+
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][0] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 2][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][3] = 0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][3] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 2][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][0] = 0;
+                            // }
                         }
                     }
                 }
@@ -2431,17 +2575,39 @@ DRAMInterface::Rank::processRefreshEvent()
 
                                 // need to reset the rhTriggers too for the victim
                                 // rows.
-                                for(int j = 0 ; j < num_neighbor_rows; j++) {
-                                    b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
-                                            = 0;
-                                    b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
-                                            = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][0] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 2][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][3] = 0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][3] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 2][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][0] = 0;
+
+                                // so. sk hynix dimms cannot have half-doubles
+                                // impressive
+                                b.rhTriggers[b.trr_table[max_idx][2] - 4][3] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][0] = 0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] + 4][0] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][3] = 0;
+
+                                // for(int j = 0 ; j < num_neighbor_rows; j++) {
+                                //     b.rhTriggers[b.trr_table[max_idx][2] - j - 1]
+                                //             = 0;
+                                //     b.rhTriggers[b.trr_table[max_idx][2] + j + 1]
+                                //             = 0;
                                 // this logic should be bypassed when the number of
                                 // aggressor rows will be more than the trr_table's
                                 // size.
-                                }
+                                // }
                                 // cannot refresh > 1 row.
-                                break;
+                                // break;
                             }
                             bank_count++;
                         }
@@ -2454,6 +2620,7 @@ DRAMInterface::Rank::processRefreshEvent()
                 }
                 break;
             case 3:
+                // micron
                 break;
             default:
                 fatal("Unknown trr variant!");
@@ -2480,6 +2647,25 @@ DRAMInterface::Rank::processRefreshEvent()
                                     std::ios::out | std::ios::app );
                             outfile << "# dumping counters before refresh!" <<
                                     std::endl;
+                            int bank_count = 0;
+                            for(auto &b: banks) {
+                                outfile << "bank: " << bank_count << std::endl;
+                                // prepare the vector
+                                // auto ut = unique(b.activated_row_list.begin(),
+                                //         b.activated_row_list.end());
+                                // b.activated_row_list.resize(
+                                //         distance(b.activated_row_list.begin(),
+                                //         ut));
+
+                                for(auto& it: b.activated_row_list) {
+                                    outfile << "\t" << it << "\t";
+                                    for(int i = 0; i < 4; i++)
+                                        outfile << b.rhTriggers[it][i] << " ";
+                                    outfile << std::endl;
+                                }
+                                bank_count++;
+                            }
+                            
                             outfile.close();
                         }
                     }
@@ -2496,7 +2682,9 @@ DRAMInterface::Rank::processRefreshEvent()
                                 b.companion_table[i][3] = 0;
                             for (int row_index = 0;
                                     row_index < dram.rowsPerBank;row_index++) {
-                                b.rhTriggers[row_index] = 0;
+                                for(int j = 0 ; j < 4; j++) {
+                                    b.rhTriggers[row_index][j] = 0;
+                                }
                                 b.aggressor_rows[row_index] = 0;
                             }
                         }
@@ -2512,7 +2700,9 @@ DRAMInterface::Rank::processRefreshEvent()
                                 b.trr_table[i][3] = 0;
                             for (int row_index = 0;
                                     row_index < dram.rowsPerBank;row_index++) {
-                                b.rhTriggers[row_index] = 0;
+                                for(int j = 0 ; j < 4; j++) {
+                                    b.rhTriggers[row_index][j] = 0;
+                                }
                                 b.aggressor_rows[row_index] = 0;
                             }
                         }

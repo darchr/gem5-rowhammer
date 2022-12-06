@@ -3,7 +3,9 @@ import m5
 
 class DRAM_TEST(DDR4_2400_16x4):
     ranks_per_channel = 1
-    rowhammer_threshold = 5
+    # companion_threshold = 2
+    # trr_threshold = 4
+    rowhammer_threshold = 7
 
 
 
@@ -34,7 +36,7 @@ system.mem_ctrl.port = system.membus.mem_side_ports
 #system.mem_ctrl.port = system.generator2.port
 
 def createLinearTraffic1(tgen):
-    yield tgen.createLinear(100000000000,   # duration
+    yield tgen.createLinear(10000000000,   # duration
                             AddrRange('128kB').end,              # min_addr
                             AddrRange('132kB').end,              # max_adr
                             64,             # block_size
@@ -45,7 +47,7 @@ def createLinearTraffic1(tgen):
     yield tgen.createExit(0)
 
 def createLinearTraffic2(tgen):
-    yield tgen.createLinear(100000000000,   # duration
+    yield tgen.createLinear(10000000000,   # duration
                             AddrRange('384kB').end,             # min_addr
                             AddrRange('386kB').end,              # max_adr
                             64,             # block_size

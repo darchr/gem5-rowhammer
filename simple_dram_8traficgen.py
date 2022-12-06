@@ -4,9 +4,10 @@ import m5
 class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
     # rowhammer_threshold = 3
-    trr_variant = 0
+    trr_variant = 2
     counter_table_length = 6
     companion_table_length = 6
+    rh_stat_dump = True
 
 
 duration = int(1e11)
@@ -27,7 +28,7 @@ system.generator4 = PyTrafficGen()
 system.generator5 = PyTrafficGen()
 system.generator6 = PyTrafficGen()
 system.generator7 = PyTrafficGen()
-system.generator8 = PyTrafficGen()
+# system.generator8 = PyTrafficGen()
 
 system.mem_ctrl = MemCtrl()
 
@@ -46,7 +47,7 @@ system.membus.cpu_side_ports = system.generator7.port
 
 # for testing the victim row
 
-system.membus.cpu_side_ports = system.generator8.port
+# system.membus.cpu_side_ports = system.generator8.port
 
 system.mem_ctrl.port = system.membus.mem_side_ports
 
@@ -153,16 +154,16 @@ def createLinearTraffic7(tgen):
 
 
 # ----- data -----
-def createLinearTraffic8(tgen):
-    yield tgen.createLinear(duration,   # duration
-                            AddrRange('37504kB').end,              # min_addr
-                            AddrRange('37505kB').end,              # max_adr
-                            64,             # block_size
-                            1000000,          # min_period
-                            1000000,          # max_period
-                            100,             # rd_perc
-                            0)              # data_limit
-    yield tgen.createExit(0)
+# def createLinearTraffic8(tgen):
+#     yield tgen.createLinear(duration,   # duration
+#                             AddrRange('37504kB').end,              # min_addr
+#                             AddrRange('37505kB').end,              # max_adr
+#                             64,             # block_size
+#                             1000000,          # min_period
+#                             1000000,          # max_period
+#                             100,             # rd_perc
+#                             0)              # data_limit
+#     yield tgen.createExit(0)
 
 root = Root(full_system=False, system=system)
 
@@ -177,5 +178,5 @@ system.generator5.start(createLinearTraffic5(system.generator5))
 system.generator6.start(createLinearTraffic6(system.generator6))
 system.generator7.start(createLinearTraffic7(system.generator7))
 
-system.generator8.start(createLinearTraffic8(system.generator8))
+# system.generator8.start(createLinearTraffic8(system.generator8))
 exit_event = m5.simulate()

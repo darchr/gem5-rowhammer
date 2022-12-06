@@ -119,7 +119,13 @@ class MemInterface : public AbstractMemory
         // single sided or a double sided rowhammer
         std::vector<long int> aggressor_rows;
 
-        std::vector<long int> rhTriggers;
+        // this only changes when the row numbers will be more than 2^16
+        // maybe ddr5
+        std::vector<uint16_t> activated_row_list;
+
+        // this branch now has updated rhTrigggers
+
+        std::vector<std::vector<long int>> rhTriggers;
         std::vector<std::bitset<1024>> weakColumns;
 
         Bank() :

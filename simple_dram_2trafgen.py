@@ -1,10 +1,14 @@
 from m5.objects import *
 import m5
 
-class DRAM_TEST(DDR4_2400_16x4):
+class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
-    rowhammer_threshold = 5
+    # rowhammer_threshold = 3
+    trr_variant = 1
+    counter_table_length = 6
 
+
+duration = int(1e11)
 
 
 system = System()
@@ -17,6 +21,7 @@ system.mem_ranges = [AddrRange('256MB')]
 system.generator1 = PyTrafficGen()
 system.generator2 = PyTrafficGen()
 system.generator3 = PyTrafficGen()
+system.generator4 = PyTrafficGen()
 
 system.mem_ctrl = MemCtrl()
 
@@ -27,16 +32,28 @@ system.membus = L2XBar()
 system.membus.cpu_side_ports = system.generator1.port
 system.membus.cpu_side_ports = system.generator2.port
 system.membus.cpu_side_ports = system.generator3.port
+system.membus.cpu_side_ports = system.generator4.port
 system.mem_ctrl.port = system.membus.mem_side_ports
-system.mem_ctrl.dram.tREFI = "2000s"
+# system.mem_ctrl.dram.tREFI = "2000s"
 
 #system.mem_ctrl.port = system.generator1.port
 #system.mem_ctrl.port = system.generator2.port
 
+# def createLinearTraffic1(tgen):
+#     yield tgen.createLinear(1000000000,   # duration
+#                             AddrRange('128kB').end,              # min_addr
+#                             AddrRange('132kB').end,              # max_adr
+#                             64,             # block_size
+#                             2000,          # min_period
+#                             2000,          # max_period
+#                             100,             # rd_perc
+#                             0)              # data_limit
+#     yield tgen.createExit(0)
+
 def createLinearTraffic1(tgen):
-    yield tgen.createLinear(100000000,   # duration
+    yield tgen.createLinear(duration,   # duration
                             AddrRange('128kB').end,              # min_addr
-                            AddrRange('132kB').end,              # max_adr
+                            AddrRange('135kB').end,              # max_adr
                             64,             # block_size
                             2000,          # min_period
                             2000,          # max_period
@@ -45,9 +62,9 @@ def createLinearTraffic1(tgen):
     yield tgen.createExit(0)
 
 def createLinearTraffic2(tgen):
-    yield tgen.createLinear(100000000,   # duration
+    yield tgen.createLinear(duration,   # duration
                             AddrRange('384kB').end,             # min_addr
-                            AddrRange('386kB').end,              # max_adr
+                            AddrRange('391kB').end,              # max_adr
                             64,             # block_size
                             2000,          # min_period
                             2000,          # max_period
@@ -55,11 +72,11 @@ def createLinearTraffic2(tgen):
                             0)              # data_limit
     yield tgen.createExit(0)
 
-
+# ----- data -----
 def createLinearTraffic3(tgen):
-    yield tgen.createLinear(10000000,   # duration
-                            0,              # min_addr
-                            AddrRange('1kB').end,              # max_adr
+    yield tgen.createLinear(duration,   # duration
+                            AddrRange('256kB').end,              # min_addr
+                            AddrRange('263kB').end,              # max_adr
                             64,             # block_size
                             1000000,          # min_period
                             1000000,          # max_period
@@ -68,10 +85,23 @@ def createLinearTraffic3(tgen):
     yield tgen.createExit(0)
 
 
+# def createLinearTraffic3(tgen):
+#     yield tgen.createLinear(10000000,   # duration
+#                             0,              # min_addr
+#                             AddrRange('1kB').end,              # max_adr
+#                             64,             # block_size
+#                             1000000,          # min_period
+#                             1000000,          # max_period
+#                             100,             # rd_perc
+#                             0)              # data_limit
+#     yield tgen.createExit(0)
+
+
 root = Root(full_system=False, system=system)
 
 m5.instantiate()
-system.generator1.start(createLinearTraffic1(system.generator1))
+system.generator4.start(createLinearTraffic1(system.generator4))
+# system.generator1.start(createLinearTraffic1(system.generator1))
 system.generator2.start(createLinearTraffic2(system.generator2))
 system.generator3.start(createLinearTraffic3(system.generator3))
 exit_event = m5.simulate()
