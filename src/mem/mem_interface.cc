@@ -56,12 +56,14 @@
 #include <algorithm>
 #include<stdlib.h>
 #include<time.h>
+#include<sys/time.h>
 
 // Including RowHammer.hh for debugging
 #include "debug/RowHammer.hh"
 #include "debug/RhInhibitor.hh"
 #include "debug/DRAMAddr.hh"
 #include "debug/RhBitflip.hh"
+#include "debug/HDBitflip.hh"
 
 namespace gem5
 {
@@ -323,53 +325,125 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
     // | row + 1 |
     // | row + 2 |  <-- birflips here
     // | row + 3 |
-    // | row - 4 |
-
-    if(bank_ref.rhTriggers[mem_pkt->row][0] >= 5 && bank_ref.rhTriggers[mem_pkt->row][1] >= rowhammerThreshold) {
+    // | row + 4 |
+    if(false) {//mem_pkt->row == 291) {
+    std::cout << mem_pkt->row << " " << bank_ref.rhTriggers[mem_pkt->row][0] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][1] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][2] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][3] << std::endl;
+    std::cout << mem_pkt->row + 1 << " " << bank_ref.rhTriggers[mem_pkt->row + 1][0] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row + 1][1] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row + 1][2] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row + 1][3] << std::endl;
+    }
+    if(mem_pkt->row == 295) {
+    std::cout << mem_pkt->row << " " << bank_ref.rhTriggers[mem_pkt->row][0] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][1] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][2] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row][3] << std::endl;
+    std::cout << mem_pkt->row - 1 << " " << bank_ref.rhTriggers[mem_pkt->row - 1][0] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row - 1][1] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row - 1][2] <<
+        " " << bank_ref.rhTriggers[mem_pkt->row - 1][3] << std::endl;
+    }
+    if(bank_ref.rhTriggers[mem_pkt->row - 1][1] >= 1 && 
+            bank_ref.rhTriggers[mem_pkt->row][1] >= 1000) {
         // half-double is rare. so we have to adjust the probability by a
         // very large factor.
-    std::cout << mem_pkt->row << " \n" << bank_ref.rhTriggers[mem_pkt->row][0] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row][1] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row][2] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row][3] << " " <<
-            std::endl << bank_ref.rhTriggers[mem_pkt->row - 1][0] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 1][1] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 1][2] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 1][3] << " " <<
-            std::endl << bank_ref.rhTriggers[mem_pkt->row - 2][0] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 2][1] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 2][2] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row - 2][3] << " " << 
-            std::endl << bank_ref.rhTriggers[mem_pkt->row + 1][0] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row + 1][1] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row + 1][2] << " " <<
-            bank_ref.rhTriggers[mem_pkt->row + 1][3] << " " << std::endl;
-
+        // std::cout << mem_pkt->row << " \n" << bank_ref.rhTriggers[mem_pkt->row][0] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row][1] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row][2] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row][3] << " " << std::endl;
+        //     std::endl << bank_ref.rhTriggers[mem_pkt->row - 1][0] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 1][1] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 1][2] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 1][3] << " " <<
+        //     std::endl << bank_ref.rhTriggers[mem_pkt->row - 2][0] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 2][1] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 2][2] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row - 2][3] << " " << 
+        //     std::endl << bank_ref.rhTriggers[mem_pkt->row + 1][0] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 1][1] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 1][2] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 1][3] << " " << 
+        //     std::endl << bank_ref.rhTriggers[mem_pkt->row + 2][0] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 2][1] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 2][2] << " " <<
+        //     bank_ref.rhTriggers[mem_pkt->row + 2][3] << " " << std::endl;
 
         // flip bit here
+        bool bitflip = false;
+        // I cannot flip this bit with a probability of 1. therefore, we
+        // need the second probability factor to cause bitflips
+
+        // the rng of c uses time. so for all simulated mem addresses for 1 sec
+        // will have the same probability
+        struct timeval time; 
+        gettimeofday(&time,NULL);
+
+        srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+        // srand(time(nullptr));
+        uint64_t prob = rand() % halfDoubleProb + 1;
+        if(prob <= 1)
+            bitflip = true;
+
         if (bank_ref.weakColumns[mem_pkt->row - 2].test(0)) {
             // this condition needs to be fixed/verified.
-            mem_pkt->corruptedAccess = true;
-            bank_ref.weakColumns[mem_pkt->row - 2].reset(0);
+            if(bitflip) {
+                mem_pkt->corruptedAccess = true;
+                bank_ref.weakColumns[mem_pkt->row - 2].reset(0);
+            }
         }
-        DPRINTF(RhBitflip,
-                "HD Bitflip at %#x, bank %d, row %d\n",
-                mem_pkt->addr, bank_ref.bank, mem_pkt->row - 2);
+
+        if(bitflip)
+            DPRINTF(HDBitflip,
+                    "HD Bitflip at %#x, bank %d, row %d\n",
+                    mem_pkt->addr, bank_ref.bank, mem_pkt->row - 2);
+        
+        // set the registers to 0 in the entire nbd
+        // for(int i = 0 ; i < 2 ; i++)
+        //     for(int j = 0 ; j < 4 ; j++) {
+        //         bank_ref.rhTriggers[mem_pkt->row + i][j] = 0;
+        //         bank_ref.rhTriggers[mem_pkt->row - i][j] = 0;
+        //     }
+
     }
 
-    if(bank_ref.rhTriggers[mem_pkt->row][3] >= 5 && bank_ref.rhTriggers[mem_pkt->row][2] >= rowhammerThreshold) {
+    if(bank_ref.rhTriggers[mem_pkt->row + 1][2] >= 1 &&
+            bank_ref.rhTriggers[mem_pkt->row][2] >= 1000) {
         // half-double is rare. so we have to adjust the probability by a
         // very large factor.
 
         // flip bit here
+        bool bitflip = false;
+        // I cannot flip this bit with a probability of 1. therefore, we
+        // need the second probability factor to cause bitflips
+
+        // the rng of c uses time. so for all simulated mem addresses for 1 sec
+        // will have the same probability
+        struct timeval time; 
+        gettimeofday(&time,NULL);
+
+        srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+        // srand(time(nullptr));
+        uint64_t prob = rand() % halfDoubleProb + 1;
+        if(prob <= 1)
+            bitflip = true;
+
         if (bank_ref.weakColumns[mem_pkt->row + 2].test(0)) {
             // this condition needs to be fixed/verified.
             mem_pkt->corruptedAccess = true;
             bank_ref.weakColumns[mem_pkt->row + 2].reset(0);
+            if(bitflip) {
+                mem_pkt->corruptedAccess = true;
+                bank_ref.weakColumns[mem_pkt->row - 2].reset(0);
+            }
         }
-        DPRINTF(RhBitflip,
-                "HD Bitflip at %#x, bank %d, row %d\n",
-                mem_pkt->addr, bank_ref.bank, mem_pkt->row + 2);
+        if(bitflip)
+            DPRINTF(HDBitflip,
+                    "HD Bitflip at %#x, bank %d, row %d\n",
+                    mem_pkt->addr, bank_ref.bank, mem_pkt->row + 2);
+        
     }
     // DPRINTF(RhBitflip, "Counter for %#x, bank %d, row %d, counter - 1 %d, "
     //         "counter + 1 %d\n",
@@ -480,10 +554,10 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         // we cannot flip the same bit, but we can flip the same row.
         // TODO: uncomment these lines if you want to
 
-        bank_ref.rhTriggers[mem_pkt->row][1] = 0;
-        bank_ref.rhTriggers[mem_pkt->row - 2][2] = 0;
-        bank_ref.rhTriggers[mem_pkt->row - 3][3] = 0;
-        bank_ref.rhTriggers[mem_pkt->row + 1][0] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row][1] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row - 2][2] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row - 3][3] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row + 1][0] = 0;
 
     }
 
@@ -579,10 +653,10 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 
             // similar to the statement above, we do the same here.
 
-            bank_ref.rhTriggers[mem_pkt->row + 3][0] = 0;
-            bank_ref.rhTriggers[mem_pkt->row + 2][1] = 0;
-            bank_ref.rhTriggers[mem_pkt->row][2] = 0;
-            bank_ref.rhTriggers[mem_pkt->row - 1][3] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row + 3][0] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row + 2][1] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row][2] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row - 1][3] = 0;
 
         }
     }
@@ -606,6 +680,7 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
     // slow
 
     if ((row <= 1) || (row >= rowsPerBank-2)) {
+        exit(1);
         if(row == 0) {
             if(bank_ref.rhTriggers[row][1]++ % 1024 == 0)
                 bank_ref.rhTriggers[row][0]++;
@@ -626,15 +701,18 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
         // modifying this logic
         // nbd first.
         bank_ref.rhTriggers[row][1]++;
-        bank_ref.rhTriggers[row][3]++;
+        bank_ref.rhTriggers[row][2]++;
 
+
+        bank_ref.rhTriggers[row][0]++;
+        bank_ref.rhTriggers[row][3]++;
         // %1000 increment for the far counters. adjusted the count by 1.
 
-        if(bank_ref.rhTriggers[row][1] % 999 == 0)
-            bank_ref.rhTriggers[row][0]++;
+        // if(bank_ref.rhTriggers[row][1] % 999 == 0)
+        //     bank_ref.rhTriggers[row][0]++;
         
-        if(bank_ref.rhTriggers[row][2] % 999 == 0)
-            bank_ref.rhTriggers[row][3]++;
+        // if(bank_ref.rhTriggers[row][2] % 999 == 0)
+        //     bank_ref.rhTriggers[row][3]++;
     }
 
     // if (row != 0) {
@@ -1514,10 +1592,12 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // starting point for context sensitive rowhammer analysis.
     // std::cout << mem_pkt->row << " " << bank_ref.rhTriggers[mem_pkt->row] << " " << bank_ref.rhTriggers[293] << std::endl;
 
-    bank_ref.rhTriggers[mem_pkt->row - 1][2] = 0;
-    bank_ref.rhTriggers[mem_pkt->row - 2][3] = 0;
-    bank_ref.rhTriggers[mem_pkt->row + 1][1] = 0;
-    bank_ref.rhTriggers[mem_pkt->row + 2][0] = 0;
+    // if this row's act cout in > 1000, this might be a half double attack
+
+    // // since this row is 
+    // assert(bank_ref.rhTriggers[mem_pkt->row - 1][2] ==
+    //         bank_ref.rhTriggers[mem_pkt->row + 1][1]);
+
 
     // AYAZ: Before returning, make sure that we update the pkt to indicate
     // that the row is corrupted or not
@@ -1526,6 +1606,14 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // TODO
 
     checkRowHammer(bank_ref, mem_pkt);
+
+    // bank_ref.rhTriggers[mem_pkt]
+
+    bank_ref.rhTriggers[mem_pkt->row - 1][2] = 0;
+    bank_ref.rhTriggers[mem_pkt->row - 2][3] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 1][1] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 2][0] = 0;
+
 
     // Update bus state to reflect when previous command was issued
     return std::make_pair(cmd_at, cmd_at + burst_gap);
@@ -1574,6 +1662,7 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       companionTableLength(_p.companion_table_length),
       companionThreshold(_p.companion_threshold),
       singleSidedProb(_p.single_sided_prob),
+      halfDoubleProb(_p.half_double_prob),
       rhStatDump(_p.rh_stat_dump),
       pageMgmt(_p.page_policy),
       maxAccessesPerRow(_p.max_accesses_per_row),

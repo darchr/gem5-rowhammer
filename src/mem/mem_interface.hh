@@ -804,6 +804,7 @@ class DRAMInterface : public MemInterface
     const uint32_t companionThreshold;
 
     const uint64_t singleSidedProb;
+    const uint64_t halfDoubleProb;
 
     uint64_t num_trr_refreshes = 0;
     bool first_act = false;
