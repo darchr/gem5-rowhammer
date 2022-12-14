@@ -64,6 +64,8 @@
 #include "params/NVMInterface.hh"
 #include "sim/eventq.hh"
 
+#include "/scr/kaustavg/projects/json/include/nlohmann/json.hpp"
+
 namespace gem5
 {
 
@@ -126,7 +128,13 @@ class MemInterface : public AbstractMemory
         // this branch now has updated rhTrigggers
 
         std::vector<std::vector<long int>> rhTriggers;
+
+        // i am reimplementing this part.
+        // these branches cannot be marged any longer
+        // std::vector<std::vector<uint16_t> > weakColumns;
         std::vector<std::bitset<1024>> weakColumns;
+
+        nlohmann::json bank_device_map;
 
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
@@ -136,6 +144,7 @@ class MemInterface : public AbstractMemory
         {
         trr_table.resize(6, std::vector<uint64_t>(4)); 
         companion_table.resize(6, std::vector<uint64_t>(4));
+        // weakColumns.resize(32768, std::vector<uint16_t>(1024));
         }
     };
 
@@ -792,6 +801,7 @@ class DRAMInterface : public MemInterface
     //AYAZ: the path to the device file with
     // the information on weak columns
     std::string deviceFile;
+    nlohmann::json device_map;
 
     //AYAZ: Rowhammer refresh counter
     int refreshCounter = 0;
@@ -805,6 +815,7 @@ class DRAMInterface : public MemInterface
 
     const uint64_t singleSidedProb;
     const uint64_t halfDoubleProb;
+    const uint64_t doubleSidedProb;
 
     uint64_t num_trr_refreshes = 0;
     bool first_act = false;

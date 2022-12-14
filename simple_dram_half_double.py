@@ -1,5 +1,6 @@
 from m5.objects import *
 import m5
+import os
 
 class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
@@ -8,7 +9,15 @@ class DRAM_TEST(DDR4_2400_8x8):
     trr_threshold = 32678
     counter_table_length = 6
     companion_table_length = 6
-    rh_stat_dump = True
+    rh_stat_dump = False
+    half_double_prob = 1e3
+    double_sided_prob = 1e5
+    device_file = os.path.join(
+        os.getcwd(),
+        # "device_map.txt"
+        # "simple-device-map-prob-15.txt"
+        "prob-005.json"
+    )
 
 
 duration = int(1e11)
@@ -57,11 +66,11 @@ def get_data_chunk(row_number, width = 8):
 
 def createLinearTraffic0(tgen):
     yield tgen.createLinear(duration,   # duration
-                            AddrRange(str(get_data_chunk(292)) + "kB").end,              # min_addr
-                            AddrRange(str(get_data_chunk(292) + 1) + "kB").end,              # max_adr
+                            AddrRange(str(get_data_chunk(291)) + "kB").end,              # min_addr
+                            AddrRange(str(get_data_chunk(291)) + "kB").end,              # max_adr
                             64,             # block_size
-                            200,          # min_period
-                            200,          # max_period
+                            100,          # min_period
+                            100,          # max_period
                             100,             # rd_perc
                             0)              # data_limit
     yield tgen.createExit(0)
@@ -70,11 +79,11 @@ def createLinearTraffic0(tgen):
 
 def createLinearTraffic1(tgen):
     yield tgen.createLinear(duration,   # duration
-                            AddrRange(str(get_data_chunk(294)) + "kB").end,             # min_addr
-                            AddrRange(str(get_data_chunk(294) + 1) + "kB").end,              # max_adr
+                            AddrRange(str(get_data_chunk(293)) + "kB").end,             # min_addr
+                            AddrRange(str(get_data_chunk(293)) + "kB").end,              # max_adr
                             64,             # block_size
-                            200,          # min_period
-                            200,          # max_period
+                            100,          # min_period
+                            100,          # max_period
                             100,             # rd_perc
                             0)              # data_limit
     yield tgen.createExit(0)
@@ -83,11 +92,11 @@ def createLinearTraffic1(tgen):
 
 def createLinearTraffic2(tgen):
     yield tgen.createLinear(duration,   # duration
-                            AddrRange(str(get_data_chunk(291)) + "kB").end,              # min_addr
-                            AddrRange(str(get_data_chunk(291) + 1) + "kB").end,              # max_adr
+                            AddrRange(str(get_data_chunk(290)) + "kB").end,              # min_addr
+                            AddrRange(str(get_data_chunk(290)) + "kB").end,              # max_adr
                             64,             # block_size
-                            200000,          # min_period
-                            200000,          # max_period
+                            800000000,          # min_period
+                            800000000,          # max_period
                             100,             # rd_perc
                             0)              # data_limit
     yield tgen.createExit(0)
@@ -96,11 +105,11 @@ def createLinearTraffic2(tgen):
 
 def createLinearTraffic3(tgen):
     yield tgen.createLinear(duration,   # duration
-                            AddrRange(str(get_data_chunk(295)) + "kB").end,             # min_addr
-                            AddrRange(str(get_data_chunk(295) + 1) + "kB").end,              # max_adr
+                            AddrRange(str(get_data_chunk(294)) + "kB").end,             # min_addr
+                            AddrRange(str(get_data_chunk(294)) + "kB").end,              # max_adr
                             64,             # block_size
-                            200000,          # min_period
-                            200000,          # max_period
+                            800000000,          # min_period
+                            800000000,          # max_period
                             100,             # rd_perc
                             0)              # data_limit
     yield tgen.createExit(0)
@@ -155,16 +164,16 @@ def createLinearTraffic3(tgen):
 
 
 # ----- data -----
-def createLinearTraffic8(tgen):
-    yield tgen.createLinear(duration,   # duration
-                            AddrRange('47504kB').end,              # min_addr
-                            AddrRange('47505kB').end,              # max_adr
-                            64,             # block_size
-                            1000000,          # min_period
-                            1000000,          # max_period
-                            100,             # rd_perc
-                            0)              # data_limit
-    yield tgen.createExit(0)
+# def createLinearTraffic8(tgen):
+#     yield tgen.createLinear(duration,   # duration
+#                             AddrRange('47504kB').end,              # min_addr
+#                             AddrRange('47505kB').end,              # max_adr
+#                             64,             # block_size
+#                             1000000,          # min_period
+#                             1000000,          # max_period
+#                             100,             # rd_perc
+#                             0)              # data_limit
+    # yield tgen.createExit(0)
 
 root = Root(full_system=False, system=system)
 
@@ -179,5 +188,5 @@ system.generator3.start(createLinearTraffic3(system.generator3))
 # system.generator6.start(createLinearTraffic6(system.generator6))
 # system.generator7.start(createLinearTraffic7(system.generator7))
 
-system.generator8.start(createLinearTraffic8(system.generator8))
+# system.generator8.start(createLinearTraffic8(system.generator8))
 exit_event = m5.simulate()

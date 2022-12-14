@@ -92,14 +92,18 @@ class DRAMInterface(MemInterface):
                                     "named as `rowhammer.trace`")
 
     # Single-sided rowhammer probability.
-    single_sided_prob = Param.Unsigned(1e6, "Number of double-sided RH "\
-                                        "bitflips observed before observing "\
+    single_sided_prob = Param.Unsigned(1e7, "Number of double-sided RH "\
+                                        "bitflips required before observing "\
                                         "at least 1 single-sided bitflip.")
 
     # Half-Double rowhammer probability factor.
     half_double_prob = Param.Unsigned(1e9, "Number of half-double RH "\
-                                        "attacks observed before observing "\
+                                        "attacks required before observing "\
                                         "at least 1 single-sided bitflip.")
+    
+    double_sided_prob = Param.Unsigned(1e5, "Number of double-sided RH "\
+                                        "attacks required to flip at least "\
+                                        "one bit in the sandwiched row.")
 
     # scheduler page policy
     page_policy = Param.PageManage('open_adaptive', "Page management policy")

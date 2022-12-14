@@ -652,10 +652,10 @@ MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
     if (dram && dram->getAddrRange().contains(pkt->getAddr())) {
 
         if (corruptedAccess) {
-            std::cout << "Corrupted Access : Address : " << pkt->getAddr()  << std::endl;
+            // std::cout << "Corrupted Access : Address : " << pkt->getAddr()  << std::endl;
             dram->access(pkt, true);
             assert(pkt->hasData());
-            std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;   
+            // std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;   
             corruptedAccess = false;
         } else {
             dram->access(pkt, false);

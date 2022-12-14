@@ -336,6 +336,7 @@ if main['GCC'] or main['CLANG']:
 
     # We always compile using C++17
     main.Append(CXXFLAGS=['-std=c++17'])
+    main.Append(CXXFLAGS=['-I/scr/kaustavg/projects/json/include/'])
 
     if sys.platform.startswith('freebsd'):
         main.Append(CCFLAGS=['-I/usr/local/include'])
@@ -714,8 +715,8 @@ Build variables for {dir}:
     if env['USE_EFENCE']:
         env.Append(LIBS=['efence'])
 
-    if env['KVM_ISA'] != env['TARGET_ISA']:
-        env['USE_KVM'] = False
+    # if env['KVM_ISA'] != env['TARGET_ISA']:
+    env['USE_KVM'] = False
 
     # Save sticky variable settings back to current variables file
     sticky_vars.Save(current_vars_file, env)

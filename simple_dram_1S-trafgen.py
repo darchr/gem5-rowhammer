@@ -8,7 +8,8 @@ class DRAM_TEST(DDR4_2400_8x8):
     trr_threshold = 16834
     counter_table_length = 6
     companion_table_length = 6
-    rh_stat_dump = True
+    rh_stat_dump = False
+    half_double_prob = 1e7
 
 
 duration = int(1e11)

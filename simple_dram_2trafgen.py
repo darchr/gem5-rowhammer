@@ -1,11 +1,16 @@
 from m5.objects import *
 import m5
+import os
 
 class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
     # rowhammer_threshold = 3
-    trr_variant = 1
+    trr_variant = 0
     counter_table_length = 6
+    device_file = os.path.join(
+        os.getcwd(),
+        "prob-005.json"
+    )
 
 
 duration = int(1e11)
@@ -101,7 +106,7 @@ root = Root(full_system=False, system=system)
 
 m5.instantiate()
 system.generator4.start(createLinearTraffic1(system.generator4))
-# system.generator1.start(createLinearTraffic1(system.generator1))
+system.generator1.start(createLinearTraffic1(system.generator1))
 system.generator2.start(createLinearTraffic2(system.generator2))
 system.generator3.start(createLinearTraffic3(system.generator3))
 exit_event = m5.simulate()
