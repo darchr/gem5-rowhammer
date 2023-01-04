@@ -888,7 +888,9 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         }
         case 1: {
             // This corresponds to the table-based TRR from Vendor A.
+            // Vendor A is Samsung.
             // There are two different TRR-triggered refreshes in this case.
+            // TRR induced refreshes are handles in the refresh section.
 
             // kg: We use the trr_table here for this bank.
             // 0 -> rank
@@ -900,59 +902,98 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
             for(int i = 0; i < std::max(
                 counterTableLength, bank_ref.entries); i++) {
-                // found this addr
+                // found this addr in the trr table.
                 if(bank_ref.trr_table[i][0] == rank_ref.rank &&
-                    bank_ref.trr_table[i][1] == bank_ref.bank &&
-                    bank_ref.trr_table[i][2] == row) {
-                        // TODO: Need to check whether this row is open.
-                        // I guess activateBank does not require this.
-                        found_flag = true;
-                        bank_ref.trr_table[i][3]++;
-                        // std :: cout << bank_ref.trr_table[i][0] << " " 
-                        // << bank_ref.trr_table[i][1] << " " << 
-                        // bank_ref.trr_table[i][2] << " " << 
-                        // bank_ref.trr_table[i][3] << std :: endl;
-                        break;
-                    }
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+                    
+                    // TODO: Need to check whether this row is open.
+                    // I guess activateBank does not require this.
+                    found_flag = true;
+
+                    // since this row is accessed, we increment its counter by
+                    // 1. this information is used in the refresh section.
+                    bank_ref.trr_table[i][3]++;
+                    break;
+                }
             }
 
-            // If the row is not found
+            // If the row is not found in the trr table.
             if(!found_flag) {
-                // We have a row which is not in the TRR table. But we don't know
-                // if we want to put this row in the table or not.
+                // We have a row which is not in the TRR table. But we don't
+                // know if we want to put this row in the table or not.
                 // UTRR does not discuss this.
 
-                // We use a small companion counter table, which acts liek a buffer
-                // to insert new rows. Rows gets replaced here.
+                // We use a small companion counter table, which acts like a
+                // buffer to insert new rows. Rows gets replaced here. This
+                // approach to track rows is similar to the technique proposed
+                // by Prohit (Son et. al., DAC 2017).
 
+                // We use two variables to find and track this row in the
+                // companion table.
+                
                 int companion_idx = 0;
-
                 bool companion_found_flag = false;
+
                 for (int i = 0 ; i < std :: max(companionTableLength,
                         bank_ref.companion_entries); i++) {
                     // found this address in the companion table.
                     if(bank_ref.companion_table[i][0] == rank_ref.rank &&
                             bank_ref.companion_table[i][1] == bank_ref.bank &&
                             bank_ref.companion_table[i][2] == row) {
+                        
                         companion_found_flag = true;
+
+                        // increment this counter by 1. This value is used to
+                        // promote riws from the comapnion table to the trr
+                        // table.
                         bank_ref.companion_table[i][3]++;
+
+                        // companion index is set to i.
+                        companion_idx = i;
                         break;
                     }
                 }
+
                 if(!companion_found_flag) {
-                    // If we did not find this row in the companion table, then we
-                    // make a new entry for this row in the companion table.
+                    // If we did not find this row in the companion table, then
+                    // we make a new entry for this row in the companion table.
                     
+                    // `idx` is used to find the index in the companion table
+                    // to insert this row.
                     int idx = 0;
                     
-                    // There is space in the companion table for a new row.
+                    // Find if there is space in the companion table for a new
+                    // row.
 
                     if(bank_ref.companion_entries < companionTableLength) {
+
+                        // This is left in the companion table.
+                        
                         idx = (int)bank_ref.companion_entries;
-                        if(bank_ref.companion_entries < companionTableLength - 1)
-                            bank_ref.companion_entries += 1;
+
+                        // TODO: This part of the code is not required. Verify
+                        // this claim.
+                        // if(bank_ref.companion_entries < 
+                        //         companionTableLength - 1)
+                        //     bank_ref.companion_entries += 1;
                     }
                     else {
+                        // there is no space left in the companion table.
+                        // TODO: Do we insert this row at the end, replacing
+                        // anything there? OR, Do we find the lowest counter
+                        // count for the row to replace?
+
+                        assert(idx == 0);
+
+                        // the number of entries in the companion table cannot
+                        // be more than the total length of the table.
+
+                        assert(bank_ref.companion_entries 
+                                == companionTableLength)
+
+                        // using the second approach here, i.e., entry with the
+                        // lowest count will be replaced.
                         for (int i = 0; i < companionTableLength ; i++) {
                             if (bank_ref.companion_table[idx][3] >
                                     bank_ref.companion_table[i][3])
@@ -960,66 +1001,103 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                         }
                     }
 
+                    // assert idx is within the counterTableLength range.
+
+                    assert(bank_ref.companion_entries >= 0 &&
+                            bank_ref.companion_entries < companionTableLength);
+
+                    // creating this entry in the companion table.
+
                     bank_ref.companion_table[idx][0] = rank_ref.rank;
                     bank_ref.companion_table[idx][1] = bank_ref.bank;
                     bank_ref.companion_table[idx][2] = row;
                     bank_ref.companion_table[idx][3] = 1;
                 }
                 else {
-                    // found this row. We now have to decide whether we promote 
-                    // this row to the trr_table or we just continue with our
-                    // experiments This row has more acts than the threshold
-
-                    // std::cout << bank_ref.companion_table[companion_idx][0]
-                    // << " " << bank_ref.companion_table[companion_idx][1] <<
-                    //     " " << bank_ref.companion_table[companion_idx][2] <<
-                    //     " " << bank_ref.companion_table[companion_idx][3] <<
-                    //     std::endl;
+                    // found this row in the companion table. We now have to
+                    // decide whether we promote this row to the trr_table or
+                    // we just continue with our experiments.
+                    
+                    // This row has more acts than the companion threshold,
+                    // then we promote this row to the trr_table.
 
                     if (bank_ref.companion_table[companion_idx][3]
                             > companionThreshold) {
-                        // We insert this row in the trr_table
-                        // is there space?
+                        // We insert this row in the trr_table. Is there space?
                         // kg: Find out if there is space in the TRR table for
-                        // a new row insertion
+                        // a new row insertion.
                         int trr_idx = 0;
-                        // std :: cout << "__x called" << std :: endl;
                         
-                        // There is space in the trr table for a new row.
+                        // Check if there is space in the trr table for a new
+                        // row.
+
                         if(bank_ref.entries < counterTableLength) {
+                            // There is space in the trr table.
+
                             trr_idx = (int)bank_ref.entries;
                             // std :: cout << "_x " << trr_idx << " " <<
                             // bank_ref.entries << std :: endl;
-                            if(bank_ref.entries < counterTableLength - 1)
-                                bank_ref.entries++;
+                            
+                            // TODO: This part of the code might not be
+                            // required. Double check this.
+
+                            // if(bank_ref.entries < counterTableLength - 1)
+                            //     bank_ref.entries++;
                         }
                         else {
-                            // there is no space for a new row. We replace the
-                            // trr entry with the least act count.
+                            // there is no space for a new row.
+                            // TODO: We replace the trr entry with the least
+                            // act count. Verify this with the UTRR paper.
+
+                            // sanity checks.
+                            assert(trr_idx == 0);
+                            assert(bank_ref.entries == counterTableLength);
+
                             for (int i = 0; i < counterTableLength ; i++) {
                                 if (bank_ref.trr_table[trr_idx][3] >
                                         bank_ref.trr_table[i][3])
                                     trr_idx = i;
                             }
                         }
+
+                        // sanity checks
+                        assert(trr_idx >= 0 && trr_idx < counterTableLength);
+
                         bank_ref.trr_table[trr_idx][0] = 
                                 bank_ref.companion_table[companion_idx][0];
                         bank_ref.trr_table[trr_idx][1] = 
                                 bank_ref.companion_table[companion_idx][1];
                         bank_ref.trr_table[trr_idx][2] = 
                                 bank_ref.companion_table[companion_idx][2];
-                    bank_ref.trr_table[trr_idx][3] =
+                        bank_ref.trr_table[trr_idx][3] =
                                 bank_ref.companion_table[companion_idx][3];
                             
-                        // an entry has been cleared in the companion table. we
-                        // need to adjust that.
-                        // replace the current idx with the last index
+                        // An entry has been cleared in the companion table. we
+                        // need to adjust that in the companion table. Replace
+                        // the current idx with the last index.
+
+                        // RE: redoing this part in a simpler way.
+                        // sanity check: the companion_entries and the
+                        // companionTableLength has to be the same since i just
+                        // moved a row.
+
+                        assert(bank_ref.companion_entries ==
+                                companionTableLength);
+                        
+                        if(companion_idx != std::min(companionTableLength,
+                                bank_ref.companion_entries) - 1) {
+                            bank_ref.companion_entries[compa][0]
+
+
+                        }
+
                         for(int i = companion_idx ; i < std::min(
                                 companionTableLength,
                                 bank_ref.companion_entries); i++) {
+                            
+                            // find the end of the table.
                             int max = std::min(companionTableLength,
                                     bank_ref.companion_entries) - 1;
-                            // std::cout << i << " " << max << std::endl;
                             if(companion_idx != max) {
                                 bank_ref.companion_table[i][0] =
                                 bank_ref.companion_table[i + 1][0];
