@@ -136,15 +136,24 @@ class MemInterface : public AbstractMemory
 
         nlohmann::json bank_device_map;
 
+        // TODO: This needs to be changed in the future.
+        // currently it only supports one bank.
+
+        std::vector<std::vector<bool>> flagged_entries;
+
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
             rowAccesses(0), bytesAccessed(0), entries(0), companion_entries(0),
             aggressor_rows(0), rhTriggers(0), weakColumns(0)
         {
-        trr_table.resize(6, std::vector<uint64_t>(4)); 
-        companion_table.resize(6, std::vector<uint64_t>(4));
+        // moving companion and trr table stuff
         // weakColumns.resize(32768, std::vector<uint16_t>(1024));
+        trr_table.resize(0, std::vector<uint64_t>(4)); 
+        companion_table.resize(0, std::vector<uint64_t>(4));
+
+        // initializing flag_map
+        flagged_entries.resize(0, std::vector<bool>(1024));
         }
     };
 
@@ -819,6 +828,7 @@ class DRAMInterface : public MemInterface
 
     uint64_t num_trr_refreshes = 0;
     bool first_act = false;
+    uint64_t para_refreshes;
     const bool rhStatDump;
     enums::PageManage pageMgmt;
     /**
