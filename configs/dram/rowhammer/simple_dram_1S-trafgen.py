@@ -3,6 +3,12 @@ import m5
 
 class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
+    device_file = os.path.join(
+        os.getcwd(),
+        # "device_map.txt"
+        # "simple-device-map-prob-15.txt"
+        "prob-005.json"
+    )
     # rowhammer_threshold = 3
     trr_variant = 0
     trr_threshold = 16834

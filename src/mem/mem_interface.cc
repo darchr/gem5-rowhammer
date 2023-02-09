@@ -179,10 +179,6 @@ MemInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
         // lastly, get the row bits, no need to remove them from addr
         row = addr % rowsPerBank;
 
-        // kg: writing into a column can make it flip again.
-        // if(is_read) {
-        //     flagged_entries[row][col] = 0;
-        // }
     } else
         panic("Unknown address mapping policy chosen!");
 
@@ -897,31 +893,6 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         act_at = ctrl->verifyMultiCmd(act_tick, maxCommandsPerWindow, tAAD);
     else
         act_at = ctrl->verifySingleCmd(act_tick, maxCommandsPerWindow);
-    
-    if(!first_act) {
-        // first access to memory.
-        first_act = true;
-        DPRINTF(DRAM, "Memory was first ACTed at tick %d\n", act_at);
-
-        if(rhStatDump) {
-            // need to start the stat dumper here
-            std::ofstream outfile;
-            outfile.open("m5out/rowhammer.trace", std::ios::out | std::ios::trunc );
-            outfile << "# starting to capture row access for rowhammer analysis" <<
-            std::endl;
-            outfile.close();
-        }
-
-        for(auto &b: rank_ref.banks) {
-            b.trr_table.resize(counterTableLength, std::vector<uint64_t>(4)); 
-            b.companion_table.resize(companionTableLength, std::vector<uint64_t>(4));
-
-            // initializing flag_map
-            b.flagged_entries.resize(8192, std::vector<bool>(1024));
-        }
-        para_refreshes = 0;
-
-    }
 
     DPRINTF(DRAM, "Activate at tick %d\n", act_at);
 
@@ -1744,12 +1715,30 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
 
     // reset the flag here
 
-    // if(mem_pkt->row == 292)
-    //     DPRINTF(RhBitflip, "Debugging row 292\t type %d\n",
-    //             mem_pkt->isRead());
-    // if(!mem_pkt->isRead())
-    //     DPRINTF(RhBitflip, "Debugging rank %d, bank %d,row %d\t type %d\n",
-    //             mem_pkt->rank, mem_pkt->bank, mem_pkt->row, mem_pkt->isRead());
+    if(!first_act) {
+        // first access to memory.
+        first_act = true;
+        DPRINTF(DRAM, "Memory was first BURSTed.\n");
+
+        if(rhStatDump) {
+            // need to start the stat dumper here
+            std::ofstream outfile;
+            outfile.open("m5out/rowhammer.trace", std::ios::out | std::ios::trunc );
+            outfile << "# starting to capture row access for rowhammer analysis" <<
+            std::endl;
+            outfile.close();
+        }
+
+        for(auto &b: rank_ref.banks) {
+            b.trr_table.resize(counterTableLength, std::vector<uint64_t>(4)); 
+            b.companion_table.resize(companionTableLength, std::vector<uint64_t>(4));
+
+            // initializing flag_map
+            b.flagged_entries.resize(8192, std::vector<bool>(1024));
+        }
+        para_refreshes = 0;
+
+    }
 
     if(!mem_pkt->isRead())
         for(int i = 0 ; i < 1024; i++)

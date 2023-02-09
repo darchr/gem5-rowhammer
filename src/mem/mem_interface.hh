@@ -64,7 +64,7 @@
 #include "params/NVMInterface.hh"
 #include "sim/eventq.hh"
 
-#include "/scr/kaustavg/projects/json/include/nlohmann/json.hpp"
+#include "../../ext/json/json/include/nlohmann/json.hpp"
 
 namespace gem5
 {
