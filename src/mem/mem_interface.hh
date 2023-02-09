@@ -148,12 +148,12 @@ class MemInterface : public AbstractMemory
             aggressor_rows(0), rhTriggers(0), weakColumns(0)
         {
         // moving companion and trr table stuff
-        // weakColumns.resize(32768, std::vector<uint16_t>(1024));
         trr_table.resize(0, std::vector<uint64_t>(4)); 
         companion_table.resize(0, std::vector<uint64_t>(4));
 
-        // initializing flag_map
-        flagged_entries.resize(8192, std::vector<bool>(1024));
+        // initializing flagged entries map to prevent the same capacitor
+        // flipping again before something new is written into it.
+        flagged_entries.resize(0, std::vector<bool>(1024));
         }
     };
 
@@ -771,6 +771,9 @@ class DRAMInterface : public MemInterface
     /**
      * DRAM specific device characteristics
      */
+    //AYAZ: the path to the device file with
+    // the information on weak columns
+    std::string deviceFile;
     const uint32_t bankGroupsPerRank;
     const bool bankGroupArch;
 
@@ -807,9 +810,6 @@ class DRAMInterface : public MemInterface
     //AYAZ: Rowhammer activation threshold
     const uint32_t rowhammerThreshold;
 
-    //AYAZ: the path to the device file with
-    // the information on weak columns
-    std::string deviceFile;
     nlohmann::json device_map;
 
     //AYAZ: Rowhammer refresh counter

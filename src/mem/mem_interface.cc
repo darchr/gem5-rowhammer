@@ -525,8 +525,7 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
             // enabled.
             DPRINTF(HDBitflip,
                     "HD Bitflip at %#x, bank %d, row %d, col %d\n",
-                    mem_pkt->addr + col, bank_ref.bank, mem_pkt->row + 2, col);
-        
+                    mem_pkt->addr + col, bank_ref.bank, mem_pkt->row + 2, col);        
     }
 
     // now we move onto n-sided rowhammer attacks. this largely is limited to
@@ -603,16 +602,24 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         if(device_map["0"][std::to_string(bank_ref.bank)]
                 [std::to_string(mem_pkt->row - 1)] != nullptr) {
             
+            // we randomly select which capacitor (in this case a column) to
+            // flip from the list of columns extracted from the json file. to
+            // the best of our knowledge, we do not have a concrete
+            // understanding on which columns flip. therefore this is still
+            // implemented in a random manner.
             srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
             uint16_t col_idx = rand() % (uint16_t)device_map["0"]
                     [std::to_string(bank_ref.bank)]
                     [std::to_string(mem_pkt->row - 1)].size();
             col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
                 [std::to_string(mem_pkt->row - 1)][col_idx];
-            // mem_pkt->corruptedAccess = true;
+            
+            // capacitors once flipped, cannot be flipped again until something
+            // is written back on it. I am using a simple method by keeping
+            // track of this column and not allowing this column to flip until
+            // a write happens on this column.
             if(bank_ref.flagged_entries[mem_pkt->row - 1][col] == 1)
                 bitflip_status = false;
-            
             bank_ref.flagged_entries[mem_pkt->row - 1][col] = 1;
         }
         else
@@ -620,7 +627,8 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
             // be set to false at this point.
             bitflip_status = false;
 
-
+        // if we have a bitflip, then dump the statistics into an out file and
+        // also if RhBitflip flag is enabled.
         if(bitflip_status) {
             if(rhStatDump) {
                 std::ofstream outfile;
@@ -638,83 +646,61 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
                 "Bitflip at %#x, bank %d, row %d, col %d, single-sided %d\n",
                 mem_pkt->addr + col, bank_ref.bank, mem_pkt->row - 1, col,
                 single_sided);
-
-            // Also, need to figure out if the accessed
-            // column is flippable or not, and if it has
-            // previously been flipped
-            // also reset the trigger counter (by looking at weakColumns)
-
-            // If this access is turned out to be corrupted, we will
-            // reset that bit in the weakColumns, so that the future
-            // accesses of the column will not induce a bit flip
-
-            // kg -> ayaz: we need to talk on how to parse the device map
-            // we need exact columns/capacitors to model this part.
-
-            // if (bank_ref.weakColumns[mem_pkt->row - 1].test(0)) {
-            //     mem_pkt->corruptedAccess = true;
-            //     bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
-            // }
         }
-        // regardless of this row being a single or a double sided attack, its
-        // rowhammer counter will be set to zero.
-
-        // since now that rhtriggers is a vector, we need to take care of all
-        // the entries.
-
-        // we cannot flip the same bit, but we can flip the same row.
-        // TODO: uncomment these lines if you want to
-
-        // bank_ref.rhTriggers[mem_pkt->row][1] = 0;
-        // bank_ref.rhTriggers[mem_pkt->row - 2][2] = 0;
-        // bank_ref.rhTriggers[mem_pkt->row - 3][3] = 0;
-        // bank_ref.rhTriggers[mem_pkt->row + 1][0] = 0;
-
+        // other bits in the same row can still flip. therefore, we don't set
+        // the rowhammer threshold to zero after a bitflip.
     }
 
+    // we redo everything for the previous case for rows + 1.
     single_sided = true, bitflip_status = false;
-    // std::cout << bank_ref.rhTriggers[8136][2] << std::endl;
-    // std::cout << bank_ref.rhTriggers[8138][1] << std::endl;
+
     if (bank_ref.rhTriggers[mem_pkt->row][2]  >= rowhammerThreshold) {
-
+        
         // this is a compound probability factor with a tunable parameter
-        // for double rowhammer attacks
-
-        // check the ndb of the this row:
+        // for double rowhammer attacks. we need to check the ndb of this row:
         // we dont know that the value of N is in an N-sided attack. so we
-        // only have to see whether (a) this row is a part of an N sided
-        // attack.
-        // we expect that the number of activates of the edge rows is similar.
-        // in order to not let this slip, we keep a difference variable called
-        // delta. the user can set this value.
-
+        // only have to see whether this row is a part of an N sided attack.
         // check this->row is an aggressor row and then check for its neighbors
         if(bank_ref.aggressor_rows[mem_pkt->row] >= rowhammerThreshold/2 &&
             bank_ref.aggressor_rows[mem_pkt->row + 2] >=
             rowhammerThreshold/2) {
+
+                // this access pattern corresponds to a double-sided rowhammer
+                // access pattern.
                 single_sided = false;
                 bitflip_status = true;
             }
 
+        // this part is similar to the implementation of half-double. we init.
+        // the timers that we'll use for both single and double-sided rowhammer
+        // we cannot flip this bit with a probability of 1. therefore, we
+        // need the second probability factor to determine bitflips. we use
+        // a random number in this case. the only issue is that we'll see
+        // bursts of bitflips as the random number will remain the same until
+        // a new seed is encountered.
         struct timeval time; 
         gettimeofday(&time,NULL);
+
         if(single_sided) {
-            // tunable probability
+
+            // the first probability that we need to incorporate the
+            // single-sided. the user provides the expected number of a single
+            // bitflip occurence in N tries. This can be configured at runtime.
+            // keep in mind that single-sided is rare. so we have to adjust the
+            // probability by a very large factor.
             srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
             uint64_t prob = rand() % singleSidedProb + 1;
             if(prob <= 10)
-                // flip a bit!
                 bitflip_status = true;
         }
-
-
         if(!single_sided) {
-            // we need to flip a bit depending upon some probability
-            // struct timeval time; 
-            gettimeofday(&time,NULL);
 
+            // the second probability that we need to incorporate the
+            // double-sided. the user provides the expected number of a single
+            // bitflip occurence in N tries. This can be configured at runtime.
+            gettimeofday(&time,NULL);
             srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
-            // srand(time(nullptr));
+            
             uint64_t prob = rand() % doubleSidedProb + 1;
             if(prob > 1)
                 bitflip_status = false;
@@ -729,21 +715,33 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
         if(device_map["0"][std::to_string(bank_ref.bank)]
                 [std::to_string(mem_pkt->row + 1)] != nullptr) {
             
+            // we randomly select which capacitor (in this case a column) to
+            // flip from the list of columns extracted from the json file. to
+            // the best of our knowledge, we do not have a concrete
+            // understanding on which columns flip. therefore this is still
+            // implemented in a random manner.            
             srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
             uint16_t col_idx = rand() % (uint16_t)device_map["0"]
                     [std::to_string(bank_ref.bank)]
                     [std::to_string(mem_pkt->row + 1)].size();
             col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
                 [std::to_string(mem_pkt->row + 1)][col_idx];
-            // mem_pkt->corruptedAccess = true;
+            
+            // capacitors once flipped, cannot be flipped again until something
+            // is written back on it. I am using a simple method by keeping
+            // track of this column and not allowing this column to flip until
+            // a write happens on this column.
             if(bank_ref.flagged_entries[mem_pkt->row + 1][col] == 1)
                 bitflip_status = false;
-            
             bank_ref.flagged_entries[mem_pkt->row + 1][col] = 1;
         }
         else
+            // it does not really matter what the bitflip status is. it has to
+            // be set to false at this point.
             bitflip_status = false;
 
+        // if we have a bitflip, then dump the statistics into an out file and
+        // also if RhBitflip flag is enabled.
         if(bitflip_status) {
             if(rhStatDump) {
                 std::ofstream outfile;
@@ -761,31 +759,9 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
                 "Bitflip at %#x, bank %d, row %d, col %d, single-sided %d\n",
                 mem_pkt->addr + col, bank_ref.bank, mem_pkt->row + 1, col,
                 single_sided);
-
-            // Also, need to figure out if the accessed
-            // column is flippable or not, and if it has
-            // previously been flipped
-            // also reset the trigger counter (by looking at weakColumns)
-            // If this access is turned out to be corrupted, we will
-            // reset that bit in the weakColumns, so that the future
-            // accesses of the column will not induce a bit flip
-
-            // if (bank_ref.weakColumns[mem_pkt->row + 1].test(0)) {
-            //     // this condition needs to be fixed/verified.
-            //     mem_pkt->corruptedAccess = true;
-            //     bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
-            // }
-
-            // similar to the statement above, we do the same here.
-            // we cannot reset the counters to zero.
-            // the TRR mechanism has to do this. or a refresh event.
-
-            // bank_ref.rhTriggers[mem_pkt->row + 3][0] = 0;
-            // bank_ref.rhTriggers[mem_pkt->row + 2][1] = 0;
-            // bank_ref.rhTriggers[mem_pkt->row][2] = 0;
-            // bank_ref.rhTriggers[mem_pkt->row - 1][3] = 0;
-
         }
+        // other bits in the same row can still flip. therefore, we don't set
+        // the rowhammer threshold to zero after a bitflip.
     }
 }
 
@@ -825,45 +801,11 @@ DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
         }
     }
     else {
-        // modifying this logic
-        // nbd first.
+        bank_ref.rhTriggers[row][0]++;
         bank_ref.rhTriggers[row][1]++;
         bank_ref.rhTriggers[row][2]++;
-
-
-        bank_ref.rhTriggers[row][0]++;
         bank_ref.rhTriggers[row][3]++;
-        // %1000 increment for the far counters. adjusted the count by 1.
-
-        // if(bank_ref.rhTriggers[row][1] % 999 == 0)
-        //     bank_ref.rhTriggers[row][0]++;
-        
-        // if(bank_ref.rhTriggers[row][2] % 999 == 0)
-        //     bank_ref.rhTriggers[row][3]++;
     }
-
-    // if (row != 0) {
-    //     bank_ref.rhTriggers[row-1]++;
-    // }
-
-    // // just to check my assumption that row numbers always start from 0
-    // assert(row != rowsPerBank);
-    // if (row != (rowsPerBank-1)) {
-    //     bank_ref.rhTriggers[row+1]++;
-    // }
-
-    // making sure that the activated row has its counter
-    // set to 0, only in case if it has not already been corrupted
-    // once we return flipped data, we can reseflagged_entries.resizet the rhTriggers for that
-    // row to restart the flipping cycle
-
-    // if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
-    //     bank_ref.rhTriggers[row] = 0;
-    // }
-
-    // kg: the same needs to be done to the trr tables as well
-    //     the trr tables are reset (if necessary) in the refresh section,
-    //     where these are triggered.
 }
 
 void
@@ -888,18 +830,19 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
         if(rhStatDump) {
             // need to start the stat dumper here
             std::ofstream outfile;
-            outfile.open("m5out/rowhammer.trace", std::ios::out | std::ios::trunc );
-            outfile << "# starting to capture row access for rowhammer analysis" <<
-            std::endl;
+            outfile.open("m5out/rowhammer.trace",
+                    std::ios::out | std::ios::trunc);
+            outfile << "# starting to capture row access for rowhammer";
+            outfile << " analysis" << std::endl;
             outfile.close();
         }
 
         for(auto &b: rank_ref.banks) {
             b.trr_table.resize(counterTableLength, std::vector<uint64_t>(4)); 
-            b.companion_table.resize(companionTableLength, std::vector<uint64_t>(4));
+            b.companion_table.resize(companionTableLength,
+                    std::vector<uint64_t>(4));
 
-            // initializing flag_map
-            b.flagged_entries.resize(8192, std::vector<bool>(1024));
+            b.flagged_entries.resize(rowsPerBank, std::vector<bool>(1024));
         }
         para_refreshes = 0;
 
@@ -1042,8 +985,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
 
                     // assert idx is within the counterTableLength range.
 
-                    assert(bank_ref.companion_entries >= 0 &&
-                            bank_ref.companion_entries < companionTableLength);
+                    assert(bank_ref.companion_entries < companionTableLength);
 
                     // creating this entry in the companion table.
 
@@ -1135,42 +1077,8 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                                         bank_ref.companion_entries) - 1][i];
                         
                         bank_ref.companion_entries--;
-
-                        // for(int i = companion_idx ; i < std::min(
-                        //         companionTableLength,
-                        //         bank_ref.companion_entries); i++) {
-                            
-                        //     // find the end of the table.
-                        //     int max = std::min(companionTableLength,
-                        //             bank_ref.companion_entries) - 1;
-                        //     if(companion_idx != max) {
-                        //         bank_ref.companion_table[i][0] =
-                        //         bank_ref.companion_table[i + 1][0];
-                        //         bank_ref.companion_table[i][1] =
-                        //         bank_ref.companion_table[i + 1][1];
-                        //         bank_ref.companion_table[i][2] =
-                        //         bank_ref.companion_table[i + 1][2];
-                        //         bank_ref.companion_table[i][3] =
-                        //         bank_ref.companion_table[i + 1][3];
-                        //         }
-                        //     }
-
-                        // std::cout << "end" << std::endl;
-                        // if(bank_ref.companion_entries == 0) {
-                        //     // print the companion table
-                        //     for (int i = 0 ; i < std :: max(
-                        //             companionTableLength,
-                        //             bank_ref.companion_entries); i++) {
-                        //         std :: cout << bank_ref.companion_entries[i][0]
-                        //             << " " << bank_ref.companion_entries[i][1]
-                        //             << " " << bank_ref.companion_entries[i][2]
-                        //             << " " << bank_ref.companion_entries[i][3]
-                        //             << std :: endl;
-                        //     }
-
-                        // }
-                        assert(bank_ref.companion_entries >= 0 &&
-                                bank_ref.companion_entries < companionTableLength);
+                        assert(bank_ref.companion_entries <
+                                companionTableLength);
                     }
 
                 }
@@ -1409,8 +1317,7 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                 if(bank_ref.entries < counterTableLength) {
                     // there is space in the table. we just create a new entry
                     // at the end of this table.
-                    assert(bank_ref.entries >= 0 &&
-                            bank_ref.entries < counterTableLength);
+                    assert(bank_ref.entries < counterTableLength);
                     bank_ref.trr_table[bank_ref.entries][0] = rank_ref.rank;
                     bank_ref.trr_table[bank_ref.entries][1] = bank_ref.bank;
                     bank_ref.trr_table[bank_ref.entries][2] = row;
@@ -1486,7 +1393,6 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                             para_refreshes + 2
                     );
                     para_refreshes += 2;
-                    int local_count = 2;
                     if(row > 1 && row < (rowsPerBank - 2)) {
                         bank_ref.rhTriggers[row - i - 1][2] = 0;
                         bank_ref.rhTriggers[row - i - 2][3] = 0;
@@ -1501,7 +1407,6 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                     else if(row == 0) {
                         bank_ref.rhTriggers[row - i + 1][1] = 0;
                         bank_ref.rhTriggers[row - i + 2][0] = 0;
-                        local_count = 1;
                     }
                     else if(row == rowsPerBank - 2) {
                         bank_ref.rhTriggers[row - i - 1][2] = 0;
@@ -1511,7 +1416,6 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                     else if(row == rowsPerBank - 1) {
                         bank_ref.rhTriggers[row - i - 1][2] = 0;
                         bank_ref.rhTriggers[row - i - 2][3] = 0;
-                        local_count = 1;
                     }
                     else {
                         fatal("Unexpected row condition encountered!");
@@ -2991,12 +2895,14 @@ DRAMInterface::Rank::processRefreshEvent()
 
                     // TODO: use a definite variable for this
                     int bank_count = 0;
-                    for(auto &b: banks)
-                        bank_count++;
+                    // for(auto &b: banks) {
+                    //     bank_count = banksPerRank;
+                    //     break;
+                    // }
 
                     // vector<uint64_t>potential_refresh_table(bank_count);
                     bool inhibitor_flag = false;
-                    bank_count = 0;
+                    // bank_count = 0;
                     // TODO:
                     // TRR can refresh all rows which has > th hammer count
                     int max_bank_idx = 0, max_idx = 0, max_val;
