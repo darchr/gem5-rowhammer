@@ -768,22 +768,14 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
 void
 DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
 {
-    //AYAZ:
-
-    //std::cout << "UV : " << bank_ref.bank << "rhTriggers size " << bank_ref.rhTriggers.size() << std::endl;
-
-    // both sides of the aggressor row has to be incremented
-
+    // this method updates the disturbances caused by a rowhammer access. this
+    // has to be called after every single activate. check whether we are
+    // receiving a row in the valid range.
     assert(row != rowsPerBank);
-    // std::cout << row << std::endl;
 
-    // the difference between this version and rh-analysis is that instead of
-    // measuing blast radius = 2
-    // we need to increment +2 counters if +1 counters reach 1000.
-    // slow
-
+    // increment the disturbance counters (or rh triggers) whenever an activate
+    // is reported.
     if ((row <= 1) || (row >= rowsPerBank-2)) {
-        exit(1);
         if(row == 0) {
             if(bank_ref.rhTriggers[row][1]++ % 1024 == 0)
                 bank_ref.rhTriggers[row][0]++;
