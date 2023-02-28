@@ -1,13 +1,23 @@
 from m5.objects import *
-import m5
+import m5, os
 
 class DRAM_TEST(DDR4_2400_8x8):
     ranks_per_channel = 1
+    device_file = os.path.join(
+        os.getcwd(),
+        # "device_map.txt"
+        # "simple-device-map-prob-15.txt"
+        "prob-005.json"
+    )
     # rowhammer_threshold = 3
-    trr_variant = 2
+    trr_variant = 1
+    trr_threshold = 16834
     counter_table_length = 6
     companion_table_length = 6
-    rh_stat_dump = True
+    rh_stat_dump = False
+    half_double_prob = 1e7
+    double_sided_prob = 1e1
+    single_sided_prob = 1e1
 
 
 duration = int(1e11)
