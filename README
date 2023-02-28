@@ -42,7 +42,7 @@ If you have questions, please send mail to gem5-users@gem5.org
 
 Enjoy using gem5 and please share your modifications and extensions.
 
-## Information about the rowhammer baranch: bank_rowhammer only
+## Information about the rowhammer baranch: all rowhammer branches
 
 Do not merge this branch with the rh-analysis branch
 This branch depends on the following external programs
