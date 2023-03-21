@@ -287,7 +287,7 @@ MemCtrl::addToReadQueue(PacketPtr pkt,
 
     // If all packets are serviced by write queue, we send the repsonse back
     if (pktsServicedByWrQ == pkt_count) {
-        accessAndRespond(pkt, frontendLatency, mem_intr);
+        accessAndRespond(pkt, frontendLatency, mem_intr, false);
         return true;
     }
 
@@ -372,7 +372,7 @@ MemCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pkt_count,
     // snoop the write queue for any upcoming reads
     // @todo, if a pkt size is larger than burst size, we might need a
     // different front end latency
-    accessAndRespond(pkt, frontendLatency, mem_intr);
+    accessAndRespond(pkt, frontendLatency, mem_intr, false);
 }
 
 void
@@ -507,14 +507,14 @@ MemCtrl::processRespondEvent(MemInterface* mem_intr,
             // @todo we probably want to have a different front end and back
             // end latency for split packets
             accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
-                             mem_intr);
+                            mem_intr, mem_pkt->corruptedAccess);
             delete mem_pkt->burstHelper;
             mem_pkt->burstHelper = NULL;
         }
     } else {
         // it is not a split packet
         accessAndRespond(mem_pkt->pkt, frontendLatency + backendLatency,
-                         mem_intr);
+                         mem_intr, mem_pkt->corruptedAccess);
     }
 
     queue.pop_front();
@@ -614,7 +614,7 @@ MemCtrl::chooseNextFRFCFS(MemPacketQueue& queue, Tick extra_col_delay,
 
 void
 MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
-                                                MemInterface* mem_intr)
+                                MemInterface* mem_intr, bool corruptedAccess)
 {
     DPRINTF(MemCtrl, "Responding to Address %#x.. \n", pkt->getAddr());
 
@@ -624,6 +624,19 @@ MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
     panic_if(!mem_intr->getAddrRange().contains(pkt->getAddr()),
              "Can't handle address range for packet %s\n", pkt->print());
     mem_intr->access(pkt);
+    // AYAZ: Also, need to keep track if this column has already been
+    // flipped or not
+    // kg: rows can be flipped again within the same refresh window 
+
+    if (corruptedAccess) {
+        // std::cout << "Corrupted Access : Address : " << pkt->getAddr()  << std::endl;
+        mem_intr->access(pkt, true);
+        assert(pkt->hasData());
+        // std::cout << "Address : " << pkt->getAddr() << "corrupted data : " << pkt->data << std::endl;   
+        corruptedAccess = false;
+    } else {
+        mem_intr->access(pkt, false);
+    }
 
     // turn packet around to go back to requestor if response expected
     if (needsResponse) {

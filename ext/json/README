@@ -1,0 +1,15 @@
+Follow these steps to get nlohmann/json as part of gem5
+
+1. Download nlohmann/json
+    1.1 Go to ext/json (this directory)
+    1.2 Clone nlohmann/json: git clone https://github.com/nlohmann/json.git
+    1.3 cd json && mkdir build
+    1.4 cd build
+    1.5 cmake ..
+    1.6 make -j<num_proc>
+
+2. Compile gem5
+    2.0 use the gem5-rowhammer version for the correct SConscript
+    2.1 cd gem5
+    2.2 Business as usual
+

@@ -375,7 +375,7 @@ class Packet : public Printable
     /// A pointer to the original request.
     RequestPtr req;
 
-  private:
+  public: // temporarily made it public
    /**
     * A pointer to the data being transferred. It can be different
     * sizes at each level of the hierarchy so it belongs to the
@@ -384,7 +384,7 @@ class Packet : public Printable
     * be allocated.
     */
     PacketDataPtr data;
-
+  private:
     /// The address of the request.  This address could be virtual or
     /// physical, depending on the system configuration.
     Addr addr;
@@ -1287,6 +1287,36 @@ class Packet : public Printable
         if (p != getPtr<uint8_t>()) {
             // for packet with allocated dynamic data, we copy data from
             // one to the other, e.g. a forwarded response to a response
+            std::memcpy(getPtr<uint8_t>(), p, getSize());
+        }
+    }
+
+
+    /**
+     * Copy corrupted data into the packet from the provided pointer.
+     */
+    void
+    setCorruptedData(uint8_t *p)
+    {
+        // we should never be copying data onto itself, which means we
+        // must idenfity packets with static data, as they carry the
+        // same pointer from source to destination and back
+        assert(p != getPtr<uint8_t>() || flags.isSet(STATIC_DATA));
+
+        if (p != getPtr<uint8_t>()) {
+            // for packet with allocated dynamic data, we copy data from
+            // one to the other, e.g. a forwarded response to a response
+
+            //long long *buffer = new long long;
+
+            //std::memcpy(buffer, p, getSize());
+
+            std::memset(p, 0x00F0, getSize());
+
+            //*buffer = *buffer + 1;
+
+            //std::memcpy(p, buffer, getSize());
+
             std::memcpy(getPtr<uint8_t>(), p, getSize());
         }
     }

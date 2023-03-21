@@ -40,10 +40,33 @@
 
 #include "mem/mem_interface.hh"
 
+#include <sys/time.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+
 #include "base/bitfield.hh"
 #include "base/cprintf.hh"
 #include "base/trace.hh"
 #include "sim/system.hh"
+
+// Including RowHammer.hh for debugging
+#include "debug/DRAMAddr.hh"
+#include "debug/HDBitflip.hh"
+#include "debug/RhBitflip.hh"
+#include "debug/RhInhibitor.hh"
+#include "debug/RowHammer.hh"
+
+// Including files for the device map
+// gem5-rowhammer requires json parser for cpp. details can be found in the
+// ext/json directory.
+#include "../../ext/json/json/include/nlohmann/json.hpp"
 
 namespace gem5
 {

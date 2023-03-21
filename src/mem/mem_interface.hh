@@ -61,6 +61,8 @@
 #include "params/MemInterface.hh"
 #include "sim/eventq.hh"
 
+#include "../../ext/json/json/include/nlohmann/json.hpp"
+
 namespace gem5
 {
 
@@ -101,11 +103,55 @@ class MemInterface : public AbstractMemory
         uint32_t rowAccesses;
         uint32_t bytesAccessed;
 
+        // kg: changes
+
+        // std::vector< std::vector<uint64_t> > agg_table;
+        std::vector< std::vector<uint64_t> > trr_table;
+        std::vector< std::vector<uint64_t> > companion_table;
+
+        uint32_t act_count = 0;
+
+        uint32_t entries;
+        uint32_t companion_entries;
+
+        // we need aggressor rows to determine whether a given attack is a
+        // single sided or a double sided rowhammer
+        std::vector<long int> aggressor_rows;
+
+        // this only changes when the row numbers will be more than 2^16
+        // maybe ddr5
+        std::vector<uint16_t> activated_row_list;
+
+        // this branch now has updated rhTrigggers
+
+        std::vector<std::vector<long int>> rhTriggers;
+
+        // i am reimplementing this part.
+        // these branches cannot be marged any longer
+        // std::vector<std::vector<uint16_t> > weakColumns;
+        std::vector<std::bitset<1024>> weakColumns;
+
+        nlohmann::json bank_device_map;
+
+        // TODO: This needs to be changed in the future.
+        // currently it only supports one bank.
+
+        std::vector<std::vector<bool>> flagged_entries;
+
         Bank() :
             openRow(NO_ROW), bank(0), bankgr(0),
             rdAllowedAt(0), wrAllowedAt(0), preAllowedAt(0), actAllowedAt(0),
-            rowAccesses(0), bytesAccessed(0)
-        { }
+            rowAccesses(0), bytesAccessed(0), entries(0), companion_entries(0),
+            aggressor_rows(0), rhTriggers(0), weakColumns(0)
+        {
+        // moving companion and trr table stuff
+        trr_table.resize(0, std::vector<uint64_t>(4)); 
+        companion_table.resize(0, std::vector<uint64_t>(4));
+
+        // initializing flagged entries map to prevent the same capacitor
+        // flipping again before something new is written into it.
+        flagged_entries.resize(0, std::vector<bool>(1024));
+        }
     };
 
     /**
@@ -140,6 +186,7 @@ class MemInterface : public AbstractMemory
     const uint32_t ranksPerChannel;
     const uint32_t banksPerRank;
     uint32_t rowsPerBank;
+
 
     /**
      * General timing requirements
