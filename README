@@ -47,3 +47,7 @@ Enjoy using gem5 and please share your modifications and extensions.
 Do not merge this branch with the rh-analysis branch
 This branch depends on the following external programs
    - json   -- https://github.com/nlohmann/json
+
+The code in this branch is in an experimental state. This version uses gem5
+v.21.2.1.0. The update will change the default branch of this repository to
+use gem5 v.22.0/v.22.1.
