@@ -33,6 +33,10 @@
 
 #include <algorithm>
 #include <climits>
+<<<<<<< HEAD
+=======
+#include <random>
+>>>>>>> gpu-compute: Remove use of 'std::random_shuffle'
 
 #include "base/intmath.hh"
 #include "base/logging.hh"
