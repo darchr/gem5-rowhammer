@@ -63,7 +63,7 @@ the class `DRAMInterface`, we have defined the following parameters:
        PARA-001 in the source.
 - `companion_table_length` - Inserting a row into the companion table is
   tricky IMO. Therefore, I have used another small table, similar to the work
-  called ProHIT (Kim et al.). A row is initially inserted into the companion
+  called ProHIT (M. Son et al.). A row is initially inserted into the companion
   table first. Then, it is promoted to the counter table. This is specific to
   the TRR variant, which uses counter tables.
 - `companion_threshold` - This is minimum number of activates required to make
