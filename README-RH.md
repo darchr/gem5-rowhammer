@@ -20,14 +20,16 @@ the class `DRAMInterface`, we have defined the following parameters:
   only flip bits at the column level. The resolution of a bit flip can be
   further tuned to be at the capacitor level. This file is a `.json` file with
   the following format:
+  ```json
   {
     "rank_number": {
         "bank_number": {
-            "row_number": [list of all weak columns],
+            "row_number": [(int)list_of_all_weak_columns],
             ...
         }
     }
   }
+  ```
   For starters, you can use the map included in the repository under
   `prob-005.json.zip`. This map is statistically generated using VARIUS
   (S. Sarangi et al.) (see the abstract/writeup for details). You can also
