@@ -42,7 +42,7 @@ If you have questions, please send mail to gem5-users@gem5.org
 
 Enjoy using gem5 and please share your modifications and extensions.
 
-## Information about the rowhammer baranch: rh_runtime_review_branch only
+## Information about the rowhammer branch:
 
 Do not merge this branch with the rh-analysis branch
 This branch depends on the following external programs
@@ -51,3 +51,6 @@ This branch depends on the following external programs
 The code in this branch is in an experimental state. This version uses gem5
 v.21.2.1.0. The update will change the default branch of this repository to
 use gem5 v.22.0/v.22.1.
+
+See README-RH.md file for further information on how to use the rowhammer module
+in gem5.
