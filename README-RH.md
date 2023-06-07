@@ -130,8 +130,8 @@ DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt) {
 
 There are pre-defined config scripts, that can be directly used with HammerSim.
 There are located in `configs/dram/rowhammer` directory. There are both traffic
-generators and also full system scripts. Note that the disk images need to be
-replaced.
+generators and also full system scripts. Note that the disk image path need to
+be replaced.
 
 ## More Information
 
