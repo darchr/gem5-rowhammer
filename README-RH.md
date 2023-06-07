@@ -24,8 +24,7 @@ the class `DRAMInterface`, we have defined the following parameters:
   {
     "rank_number": {
         "bank_number": {
-            "row_number": [(int)list_of_all_weak_columns],
-            ...
+            "row_number": ["(int)list_of_all_weak_columns"],
         }
     }
   }
