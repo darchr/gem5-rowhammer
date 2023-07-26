@@ -32,10 +32,14 @@ PROJECT_NAME           = gem5
 # if some version control system is used.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 PROJECT_NUMBER         = [DEVELOP-FOR-23.0]
 =======
 PROJECT_NUMBER         = v23.0.0.1
 >>>>>>> misc: Update version to v23.0.0.1
+=======
+PROJECT_NUMBER         = v23.0.1.0
+>>>>>>> misc: Update version to v23.0.1.0
 
 # The OUTPUT_DIRECTORY tag is used to specify the (relative or absolute)
 # base path where the generated documentation will be put.
