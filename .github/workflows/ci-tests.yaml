@@ -14,12 +14,21 @@ concurrency:
 jobs:
     pre-commit:
     # runs on github hosted runner
+<<<<<<< HEAD
         runs-on: ubuntu-22.04
         if: github.event.pull_request.draft == false
         steps:
             - uses: actions/checkout@v3
             - uses: actions/setup-python@v3
             - uses: pre-commit/action@v3.0.0
+=======
+    runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v3
+    - uses: pre-commit/action@v3.0.0
+>>>>>>> misc: Copy .github directory from develop to stable
 
   # ensures we have a change-id in every commit, needed for gerrit
 <<<<<<< HEAD
@@ -198,6 +207,7 @@ jobs:
   check-for-change-id:
     # runs on github hosted runner
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
       - uses: actions/checkout@v3
         with:
@@ -221,6 +231,7 @@ jobs:
 
   build-gem5:
     runs-on: [self-hosted, linux, x64, build]
+    if: github.event.pull_request.draft == false
     container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
     needs: [pre-commit, check-for-change-id] # only runs if pre-commit and change-id passes
     outputs:
@@ -241,6 +252,7 @@ jobs:
 
   unittests-all-opt:
     runs-on: [self-hosted, linux, x64, run]
+    if: github.event.pull_request.draft == false
     container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
     needs: [pre-commit, check-for-change-id] # only runs if pre-commit and change-id passes
     timeout-minutes: 60
@@ -253,6 +265,7 @@ jobs:
 
   testlib-quick:
     runs-on: [self-hosted, linux, x64, run]
+    if: github.event.pull_request.draft == false
     container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
     needs: [pre-commit, build-gem5, check-for-change-id]
     timeout-minutes: 360     # 6 hours

@@ -104,6 +104,7 @@ jobs:
 
   build-gem5:
     strategy:
+      fail-fast: false
       matrix:
         # NULL is in quotes since it is considered a keyword in yaml files
         image: [ALL, ALL_CHI, ARM, ALL_MSI, ALL_MESI_Two_Level, "NULL", NULL_MI_example, RISCV, VEGA_X86]
@@ -158,6 +159,7 @@ jobs:
   # start running all of the long tests
   testlib-long-tests:
     strategy:
+      fail-fast: false
       matrix:
         test-type: [arm_boot_tests, fs, gem5_library_example_tests, gpu, insttest_se, learning_gem5, m5threads_test_atomic, memory, multi_isa, replacement_policies, riscv_boot_tests, stdlib, x86_boot_tests]
     runs-on: [self-hosted, linux, x64, run]
@@ -361,6 +363,7 @@ jobs:
   testlib-long-gem5_library_example_tests:
     runs-on: [self-hosted, linux, x64, run]
     strategy:
+      fail-fast: false
       matrix:
         test-type: [gem5-library-example-x86-ubuntu-run-ALL-x86_64-opt, gem5-library-example-riscv-ubuntu-run-ALL-x86_64-opt, lupv-example-ALL-x86_64-opt, gem5-library-example-arm-ubuntu-run-test-ALL-x86_64-opt, gem5-library-example-riscvmatched-hello-ALL-x86_64-opt]
     container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
