@@ -10,6 +10,9 @@ on:
 
 jobs:
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
     name-artifacts:
         runs-on: ubuntu-latest
         outputs:
@@ -18,6 +21,7 @@ jobs:
             - uses: actions/checkout@v2
             - id: artifact-name
               run: echo "name=$(date +"%Y-%m-%d_%H.%M.%S-")" >> $GITHUB_OUTPUT
+<<<<<<< HEAD
 
     build-gem5:
         strategy:
@@ -101,88 +105,95 @@ jobs:
     - uses: actions/checkout@v2
     - id: artifact-name
       run: echo "name=$(date +"%Y-%m-%d_%H.%M.%S-")" >> $GITHUB_OUTPUT
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
 
-  build-gem5:
-    strategy:
-      fail-fast: false
-      matrix:
+    build-gem5:
+        strategy:
+            fail-fast: false
+            matrix:
         # NULL is in quotes since it is considered a keyword in yaml files
-        image: [ALL, ALL_CHI, ARM, ALL_MSI, ALL_MESI_Two_Level, "NULL", NULL_MI_example, RISCV, VEGA_X86]
+                image: [ALL, ALL_CHI, ARM, ALL_MSI, ALL_MESI_Two_Level, 'NULL', NULL_MI_example, RISCV, VEGA_X86]
         # this allows us to pass additional command line parameters
         # the default is to add -j $(nproc), but some images
         # require more specifications when built
-        include:
-          - command-line: -j $(nproc)
-          - image: ALL_CHI
-            command-line: --default=ALL PROTOCOL=CHI -j $(nproc)
-          - image: ALL_MSI
-            command-line: --default=ALL PROTOCOL=MSI -j $(nproc)
-          - image: ALL_MESI_Two_Level
-            command-line: --default=ALL PROTOCOL=MESI_Two_Level -j $(nproc)
-          - image: NULL_MI_example
-            command-line: --default=NULL PROTOCOL=MI_example -j $(nproc)
-    runs-on: [self-hosted, linux, x64, build]
-    needs: name-artifacts
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
+                include:
+                    - command-line: -j $(nproc)
+                    - image: ALL_CHI
+                      command-line: --default=ALL PROTOCOL=CHI -j $(nproc)
+                    - image: ALL_MSI
+                      command-line: --default=ALL PROTOCOL=MSI -j $(nproc)
+                    - image: ALL_MESI_Two_Level
+                      command-line: --default=ALL PROTOCOL=MESI_Two_Level -j $(nproc)
+                    - image: NULL_MI_example
+                      command-line: --default=NULL PROTOCOL=MI_example -j $(nproc)
+        runs-on: [self-hosted, linux, x64]
+        needs: name-artifacts
+        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        steps:
+            - uses: actions/checkout@v3
+              with:
           # Scheduled workflows run on the default branch by default. We
           # therefore need to explicitly checkout the develop branch.
-          ref: develop
-      - name: Build gem5
-        run: scons build/${{ matrix.image }}/gem5.opt ${{ matrix.command-line }}
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ${{ needs.name-artifacts.outputs.build-name }}${{ matrix.image }}
-          path: build/${{ matrix.image }}/gem5.opt
-          retention-days: 5
-      - run: echo "This job's status is ${{ job.status }}."
+                  ref: develop
+            - name: Build gem5
+              run: scons build/${{ matrix.image }}/gem5.opt ${{ matrix.command-line }}
+            - uses: actions/upload-artifact@v3
+              with:
+                  name: ${{ needs.name-artifacts.outputs.build-name }}${{ matrix.image }}
+                  path: build/${{ matrix.image }}/gem5.opt
+                  retention-days: 5
+            - run: echo "This job's status is ${{ job.status }}."
 
   # this builds both unittests.fast and unittests.debug
-  unittests-fast-debug:
-    strategy:
-      matrix:
-        type: [fast, debug]
-    runs-on: [self-hosted, linux, x64, run]
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
+    unittests-fast-debug:
+        strategy:
+            matrix:
+                type: [fast, debug]
+        runs-on: [self-hosted, linux, x64]
+        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        timeout-minutes: 60
+        steps:
+            - uses: actions/checkout@v3
+              with:
           # Scheduled workflows run on the default branch by default. We
           # therefore need to explicitly checkout the develop branch.
-          ref: develop
-      - name: ALL/unittests.${{ matrix.type }} UnitTests
-        run: scons build/ALL/unittests.${{ matrix.type }} -j $(nproc)
+                  ref: develop
+            - name: ALL/unittests.${{ matrix.type }} UnitTests
+              run: scons build/ALL/unittests.${{ matrix.type }} -j $(nproc)
 
   # start running all of the long tests
-  testlib-long-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        test-type: [arm_boot_tests, fs, gem5_library_example_tests, gpu, insttest_se, learning_gem5, m5threads_test_atomic, memory, multi_isa, replacement_policies, riscv_boot_tests, stdlib, x86_boot_tests]
-    runs-on: [self-hosted, linux, x64, run]
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [name-artifacts, build-gem5]
-    timeout-minutes: 1440 # 24 hours for entire matrix to run
-    steps:
-    - name: Clean runner
-      run:
-        rm -rf ./* || true
-        rm -rf ./.??* || true
-        rm -rf ~/.cache || true
-    - uses: actions/checkout@v3
-      with:
+    testlib-long-tests:
+        strategy:
+            fail-fast: false
+            matrix:
+                test-type: [arm_boot_tests, fs, gpu, insttest_se, learning_gem5, m5threads_test_atomic, memory, multi_isa, replacement_policies, riscv_boot_tests,
+                    stdlib, x86_boot_tests]
+        runs-on: [self-hosted, linux, x64]
+        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        needs: [name-artifacts, build-gem5]
+        timeout-minutes: 1440 # 24 hours for entire matrix to run
+        steps:
+            - name: Clean runner
+              run: rm -rf ./* || true rm -rf ./.??* || true rm -rf ~/.cache || true
+            - uses: actions/checkout@v3
+              with:
         # Scheduled workflows run on the default branch by default. We
         # therefore need to explicitly checkout the develop branch.
+<<<<<<< HEAD
         ref: develop
 >>>>>>> misc: Add ".github" changes to minor release
+=======
+                  ref: develop
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
     # download all artifacts for each test
     # since long tests can't start until the build matrix completes,
     # we download all artifacts from the build for each test
     # in this matrix
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
             - uses: actions/download-artifact@v3
               with:
                   name: ${{needs.name-artifacts.outputs.build-name}}ALL
@@ -228,6 +239,7 @@ jobs:
                   name: ${{needs.name-artifacts.outputs.build-name}}VEGA_X86
                   path: build/VEGA_X86
             - run: chmod u+x build/VEGA_X86/gem5.opt
+<<<<<<< HEAD
     # run test
             - name: long ${{ matrix.test-type }} tests
               working-directory: ${{ github.workspace }}/tests
@@ -338,47 +350,48 @@ jobs:
         name: ${{needs.name-artifacts.outputs.build-name}}VEGA_X86
         path: build/VEGA_X86
     - run: chmod u+x build/VEGA_X86/gem5.opt
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
     # run test
-    - name: long ${{ matrix.test-type }} tests
-      working-directory: ${{ github.workspace }}/tests
-      run: ./main.py run gem5/${{ matrix.test-type }} --length=long --skip-build -vv -t $(nproc)
-    - name: create zip of results
-      if: success() || failure()
-      run: |
-        apt-get -y install zip
-        zip -r output.zip tests/testing-results
-    - name: upload zip
-      if: success() || failure()
-      uses: actions/upload-artifact@v3
-      env:
-        MY_STEP_VAR: ${{ matrix.test-type }}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
-      with:
-        name: ${{ env.MY_STEP_VAR }}
-        path: output.zip
-        retention-days: 7
-    - run: echo "This job's status is ${{ job.status }}."
+            - name: long ${{ matrix.test-type }} tests
+              working-directory: ${{ github.workspace }}/tests
+              run: ./main.py run gem5/${{ matrix.test-type }} --length=long --skip-build -vv -t $(nproc)
+            - name: create zip of results
+              if: success() || failure()
+              run: |
+                  apt-get -y install zip
+                  zip -r output.zip tests/testing-results
+            - name: upload zip
+              if: success() || failure()
+              uses: actions/upload-artifact@v3
+              env:
+                  MY_STEP_VAR: ${{ matrix.test-type }}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
+              with:
+                  name: ${{ env.MY_STEP_VAR }}
+                  path: output.zip
+                  retention-days: 7
+            - run: echo "This job's status is ${{ job.status }}."
 
   # split library example tests into runs based on Suite UID
   # so that they don't hog the runners for too long
-  testlib-long-gem5_library_example_tests:
-    runs-on: [self-hosted, linux, x64, run]
-    strategy:
-      fail-fast: false
-      matrix:
-        test-type: [gem5-library-example-x86-ubuntu-run-ALL-x86_64-opt, gem5-library-example-riscv-ubuntu-run-ALL-x86_64-opt, lupv-example-ALL-x86_64-opt, gem5-library-example-arm-ubuntu-run-test-ALL-x86_64-opt, gem5-library-example-riscvmatched-hello-ALL-x86_64-opt]
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [name-artifacts, build-gem5]
-    timeout-minutes: 1440 # 24 hours
-    steps:
-    - name: Clean runner
-      run:
-        rm -rf ./* || true
-        rm -rf ./.??* || true
-        rm -rf ~/.cache || true
-    - uses: actions/checkout@v3
-      with:
+    testlib-long-gem5_library_example_tests:
+        runs-on: [self-hosted, linux, x64]
+        strategy:
+            fail-fast: false
+            matrix:
+                test-type: [gem5-library-example-x86-ubuntu-run-ALL-x86_64-opt, gem5-library-example-riscv-ubuntu-run-ALL-x86_64-opt, lupv-example-ALL-x86_64-opt,
+                    gem5-library-example-arm-ubuntu-run-test-ALL-x86_64-opt, gem5-library-example-riscvmatched-hello-ALL-x86_64-opt]
+        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        needs: [name-artifacts, build-gem5]
+        timeout-minutes: 1440 # 24 hours
+        steps:
+            - name: Clean runner
+              run: rm -rf ./* || true rm -rf ./.??* || true rm -rf ~/.cache || true
+            - uses: actions/checkout@v3
+              with:
         # Scheduled workflows run on the default branch by default. We
         # therefore need to explicitly checkout the develop branch.
+<<<<<<< HEAD
         ref: develop
     - uses: actions/download-artifact@v3
       with:
@@ -404,12 +417,43 @@ jobs:
         retention-days: 7
     - run: echo "This job's status is ${{ job.status }}."
 >>>>>>> misc: Add ".github" changes to minor release
+=======
+                  ref: develop
+            - uses: actions/download-artifact@v3
+              with:
+                  name: ${{needs.name-artifacts.outputs.build-name}}ALL
+                  path: build/ALL
+            - run: chmod u+x build/ALL/gem5.opt
+            - name: long ${{ matrix.test-type }} gem5_library_example_tests
+              working-directory: ${{ github.workspace }}/tests
+              run: ./main.py run --uid SuiteUID:tests/gem5/gem5_library_example_tests/test_gem5_library_examples.py:test-${{ matrix.test-type }} --length=long
+                  --skip-build -vv
+            - name: create zip of results
+              if: success() || failure()
+              run: |
+                  apt-get -y install zip
+                  zip -r output.zip tests/testing-results
+            - name: upload zip
+              if: success() || failure()
+              uses: actions/upload-artifact@v3
+              env:
+                  MY_STEP_VAR: ${{ matrix.test-type }}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
+              with:
+                  name: ${{ env.MY_STEP_VAR }}
+                  path: output.zip
+                  retention-days: 7
+            - run: echo "This job's status is ${{ job.status }}."
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
 
   # This runs the SST-gem5 integration compilation and tests it with
   # ext/sst/sst/example.py.
     sst-test:
         runs-on: [self-hosted, linux, x64]
+<<<<<<< HEAD
         container: ghcr.io/gem5/sst-env:latest
+=======
+        container: gcr.io/gem5-test/sst-env:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         timeout-minutes: 180
 
         steps:
@@ -434,7 +478,11 @@ jobs:
   # simulation with it.
     systemc-test:
         runs-on: [self-hosted, linux, x64]
+<<<<<<< HEAD
         container: ghcr.io/gem5/systemc-env:latest
+=======
+        container: gcr.io/gem5-test/systemc-env:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         timeout-minutes: 180
 
         steps:
@@ -458,7 +506,11 @@ jobs:
   # Runs the gem5 Nighyly GPU tests.
     gpu-tests:
         runs-on: [self-hosted, linux, x64]
+<<<<<<< HEAD
         container: ghcr.io/gem5/gcn-gpu:latest
+=======
+        container: gcr.io/gem5-test/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         timeout-minutes: 720 # 12 hours
 
         steps:

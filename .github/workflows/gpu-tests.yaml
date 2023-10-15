@@ -1,9 +1,15 @@
 ---
+<<<<<<< HEAD
 # This workflow runs all the Weekly GPU Tests.
 # For now this file is kept separate as we are still developing and testing
 # this workflow. It will eventually be merged with "weekly-tests.yaml"
 
 name: Weekly Tests (GPU)
+=======
+# This workflow runs all of the very-long tests within main.py
+
+name: Weekly Tests
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
 
 on:
   # Runs every Sunday from 7AM UTC
@@ -15,7 +21,11 @@ on:
 jobs:
     build-gem5:
         runs-on: [self-hosted, linux, x64]
+<<<<<<< HEAD
         container: ghcr.io/gem5/gcn-gpu:latest
+=======
+        container: gcr.io/gem5-test/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         steps:
             - uses: actions/checkout@v3
               with:
@@ -31,6 +41,7 @@ jobs:
                   retention-days: 5
             - run: echo "This job's status is ${{ job.status }}."
 
+<<<<<<< HEAD
     LULESH-tests:
         runs-on: [self-hosted, linux, x64]
         container: ghcr.io/gem5/gcn-gpu:latest
@@ -66,6 +77,11 @@ jobs:
     HACC-tests:
         runs-on: [self-hosted, linux, x64]
         container: ghcr.io/gem5/gcn-gpu:latest
+=======
+    HACC-tests:
+        runs-on: [self-hosted, linux, x64]
+        container: gcr.io/gem5-test/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         needs: build-gem5
         timeout-minutes: 120 # 2 hours
         steps:

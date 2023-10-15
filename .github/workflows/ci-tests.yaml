@@ -15,12 +15,16 @@ jobs:
     pre-commit:
     # runs on github hosted runner
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
         runs-on: ubuntu-22.04
         if: github.event.pull_request.draft == false
         steps:
             - uses: actions/checkout@v3
             - uses: actions/setup-python@v3
             - uses: pre-commit/action@v3.0.0
+<<<<<<< HEAD
 =======
     runs-on: ubuntu-22.04
     if: github.event.pull_request.draft == false
@@ -32,6 +36,10 @@ jobs:
 
   # ensures we have a change-id in every commit, needed for gerrit
 <<<<<<< HEAD
+=======
+
+  # ensures we have a change-id in every commit, needed for gerrit
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
     check-for-change-id:
         # runs on github hosted runner
         runs-on: ubuntu-22.04
@@ -99,6 +107,7 @@ jobs:
             build-matrix: ${{ steps.build-matrix.outputs.build-matrix }}
             test-dirs-matrix: ${{ steps.dir-matrix.outputs.test-dirs-matrix }}
 
+<<<<<<< HEAD
     clang-fast-compilation:
         # gem5 binaries built in `quick-gem5-builds` always use GCC.
         # Clang is more strict than GCC. This job checks that gem5 compiles
@@ -115,6 +124,8 @@ jobs:
               working-directory: ${{ github.workspace }}
               run: scons build/ALL/gem5.fast -j $(nproc)
 
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
     testlib-quick-gem5-builds:
         runs-on: [self-hosted, linux, x64]
         if: github.event.pull_request.draft == false
@@ -203,6 +214,7 @@ jobs:
         needs: testlib-quick-execution
         steps:
             - run: echo "This job's status is ${{ job.status }}."
+<<<<<<< HEAD
 =======
   check-for-change-id:
     # runs on github hosted runner
@@ -300,3 +312,5 @@ jobs:
           retention-days: 7
       - run: echo "This job's status is ${{ job.status }}."
 >>>>>>> misc: Add ".github" changes to minor release
+=======
+>>>>>>> misc: Copy .github directory from develop to stable (#458)
