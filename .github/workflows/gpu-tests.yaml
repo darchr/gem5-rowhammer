@@ -1,5 +1,6 @@
 ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # This workflow runs all the Weekly GPU Tests.
 # For now this file is kept separate as we are still developing and testing
 # this workflow. It will eventually be merged with "weekly-tests.yaml"
@@ -10,6 +11,13 @@ name: Weekly Tests (GPU)
 
 name: Weekly Tests
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+# This workflow runs all the Weekly GPU Tests.
+# For now this file is kept separate as we are still developing and testing
+# this workflow. It will eventually be merged with "weekly-tests.yaml"
+
+name: Weekly Tests (GPU)
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
 
 on:
   # Runs every Sunday from 7AM UTC
@@ -22,10 +30,14 @@ jobs:
     build-gem5:
         runs-on: [self-hosted, linux, x64]
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/gcn-gpu:latest
 =======
         container: gcr.io/gem5-test/gcn-gpu:latest
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+        container: ghcr.io/gem5/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         steps:
             - uses: actions/checkout@v3
               with:
@@ -42,9 +54,15 @@ jobs:
             - run: echo "This job's status is ${{ job.status }}."
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     LULESH-tests:
         runs-on: [self-hosted, linux, x64]
         container: ghcr.io/gem5/gcn-gpu:latest
+=======
+    LULESH-tests:
+        runs-on: [self-hosted, linux, x64]
+        container: ghcr.io/gem5-test/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         needs: build-gem5
         timeout-minutes: 480 # 8 hours
         steps:
@@ -64,6 +82,10 @@ jobs:
             - run: chmod u+x build/GCN3_X86/gem5.opt
 
             - name: Obtain LULESH
+<<<<<<< HEAD
+=======
+              working-directory: ${{ github.workspace }}/lulesh
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
               # Obtains the latest LULESH compatible with this version of gem5 via
               # gem5 Resources.
               run: build/GCN3_X86/gem5.opt util/obtain-resource.py lulesh -p lulesh
@@ -74,6 +96,7 @@ jobs:
                   build/GCN3_X86/gem5.opt configs/example/apu_se.py -n3 --mem-size=8GB --reg-alloc-policy=dynamic --benchmark-root="lulesh" -c \
                   lulesh 0.01 2
 
+<<<<<<< HEAD
     HACC-tests:
         runs-on: [self-hosted, linux, x64]
         container: ghcr.io/gem5/gcn-gpu:latest
@@ -82,6 +105,11 @@ jobs:
         runs-on: [self-hosted, linux, x64]
         container: gcr.io/gem5-test/gcn-gpu:latest
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+    HACC-tests:
+        runs-on: [self-hosted, linux, x64]
+        container: ghcr.io/gem5/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         needs: build-gem5
         timeout-minutes: 120 # 2 hours
         steps:

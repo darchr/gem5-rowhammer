@@ -129,7 +129,7 @@ jobs:
                       command-line: --default=NULL PROTOCOL=MI_example -j $(nproc)
         runs-on: [self-hosted, linux, x64]
         needs: name-artifacts
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
         steps:
             - uses: actions/checkout@v3
               with:
@@ -151,7 +151,7 @@ jobs:
             matrix:
                 type: [fast, debug]
         runs-on: [self-hosted, linux, x64]
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
         timeout-minutes: 60
         steps:
             - uses: actions/checkout@v3
@@ -170,7 +170,7 @@ jobs:
                 test-type: [arm_boot_tests, fs, gpu, insttest_se, learning_gem5, m5threads_test_atomic, memory, multi_isa, replacement_policies, riscv_boot_tests,
                     stdlib, x86_boot_tests]
         runs-on: [self-hosted, linux, x64]
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
         needs: [name-artifacts, build-gem5]
         timeout-minutes: 1440 # 24 hours for entire matrix to run
         steps:
@@ -381,7 +381,7 @@ jobs:
             matrix:
                 test-type: [gem5-library-example-x86-ubuntu-run-ALL-x86_64-opt, gem5-library-example-riscv-ubuntu-run-ALL-x86_64-opt, lupv-example-ALL-x86_64-opt,
                     gem5-library-example-arm-ubuntu-run-test-ALL-x86_64-opt, gem5-library-example-riscvmatched-hello-ALL-x86_64-opt]
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
+        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
         needs: [name-artifacts, build-gem5]
         timeout-minutes: 1440 # 24 hours
         steps:
@@ -450,10 +450,14 @@ jobs:
     sst-test:
         runs-on: [self-hosted, linux, x64]
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/sst-env:latest
 =======
         container: gcr.io/gem5-test/sst-env:latest
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+        container: ghcr.io/gem5/sst-env:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         timeout-minutes: 180
 
         steps:
@@ -479,10 +483,14 @@ jobs:
     systemc-test:
         runs-on: [self-hosted, linux, x64]
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/systemc-env:latest
 =======
         container: gcr.io/gem5-test/systemc-env:latest
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+        container: ghcr.io/gem5/systemc-env:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         timeout-minutes: 180
 
         steps:
@@ -507,10 +515,14 @@ jobs:
     gpu-tests:
         runs-on: [self-hosted, linux, x64]
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/gcn-gpu:latest
 =======
         container: gcr.io/gem5-test/gcn-gpu:latest
 >>>>>>> misc: Copy .github directory from develop to stable (#458)
+=======
+        container: ghcr.io/gem5/gcn-gpu:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         timeout-minutes: 720 # 12 hours
 
         steps:

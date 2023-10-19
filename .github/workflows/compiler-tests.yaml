@@ -32,6 +32,7 @@ jobs:
         runs-on: [self-hosted, linux, x64]
         timeout-minutes: 2880 # 48 hours
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/${{ matrix.image }}:latest
         steps:
             - uses: actions/checkout@v3
@@ -59,6 +60,9 @@ jobs:
 <<<<<<< HEAD
 =======
         container: gcr.io/gem5-test/${{ matrix.image }}:latest
+=======
+        container: ghcr.io/gem5/${{ matrix.image }}:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         steps:
             - uses: actions/checkout@v3
               with:
@@ -95,6 +99,7 @@ jobs:
         runs-on: [self-hosted, linux, x64]
         timeout-minutes: 2880 # 48 hours
 <<<<<<< HEAD
+<<<<<<< HEAD
         container: ghcr.io/gem5/${{ matrix.image }}:latest
         steps:
             - uses: actions/checkout@v3
@@ -123,6 +128,9 @@ jobs:
 <<<<<<< HEAD
 =======
         container: gcr.io/gem5-test/${{ matrix.image }}:latest
+=======
+        container: ghcr.io/gem5/${{ matrix.image }}:latest
+>>>>>>> misc: Copy .github directory from develop to stable (#485)
         steps:
             - uses: actions/checkout@v3
               with:
