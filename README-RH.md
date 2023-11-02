@@ -9,6 +9,10 @@ This file contains information on how to get started with the RowHammer module.
 Changes to the gem5's source is confined to the following files:
 - `src/mem/DRAMInterface.py`
 - `src/mem/mem_ctrl.cc`
+- `src/mem/mem_Ctrl.hh`
+- `src/mem/packet.hh`
+- `src/mem/dram_interface.hh`
+- `src/mem/dram_interface.cc`
 - `src/mem/mem_interface.hh`
 - `src/mem/mem_interface.cc`
 - `src/mem/SConscript`

@@ -98,6 +98,11 @@ class BurstHelper
 class MemPacket
 {
   public:
+    // hammersim: AYAZ: For rowhammer stuff
+    // this is to indicate that the mem_pkt is accessing a column in a row
+    // which has flip bits the actual column in that row which should be
+    // flipped? we can randomly pick that column!
+    bool corruptedAccess = false;
 
     /** When did request enter the controller */
     const Tick entryTime;
@@ -382,7 +387,7 @@ class MemCtrl : public qos::MemCtrl
      * @param mem_intr the memory interface to access
      */
     virtual void accessAndRespond(PacketPtr pkt, Tick static_latency,
-                                                MemInterface* mem_intr);
+                                MemInterface* mem_intr, bool corruptedAccess);
 
     /**
      * Determine if there is a packet that can issue.

@@ -37,15 +37,19 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include "mem/dram_interface.hh"
 
 #include "base/bitfield.hh"
 #include "base/cprintf.hh"
 #include "base/trace.hh"
 #include "debug/DRAM.hh"
+#include "debug/DRAMAddr.hh"
 #include "debug/DRAMPower.hh"
 #include "debug/DRAMState.hh"
+#include "debug/HDBitflip.hh"
+#include "debug/RhBitflip.hh"
+#include "debug/RhInhibitor.hh"
+#include "debug/RowHammer.hh"
 #include "sim/system.hh"
 
 namespace gem5
@@ -171,6 +175,508 @@ DRAMInterface::chooseNextFRFCFS(MemPacketQueue& queue, Tick min_col_at) const
     return std::make_pair(selected_pkt_it, selected_col_at);
 }
 
+
+void
+DRAMInterface::checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt)
+{
+    // hammersim: next stop: half-double. visualizing half-double
+    // | row - 4 |
+    // | row - 3 |
+    // | row - 2 |  <-- bitflips here
+    // | row - 1 |
+    // | row     |
+    // | row + 1 |
+    // | row + 2 |  <-- birflips here
+    // | row + 3 |
+    // | row + 4 |
+    if (bank_ref.rhTriggers[mem_pkt->row - 1][1] >= 1 &&
+            bank_ref.rhTriggers[mem_pkt->row][1] >= 1000) {
+        // half-double is rare. so we have to adjust the probability by a
+        // very large factor.
+
+        bool bitflip = false;
+        // I cannot flip this bit with a probability of 1. therefore, we
+        // need the second probability factor to cause bitflips
+        // the rng of c uses time. so for all simulated mem addresses for 1 sec
+        // will have the same probability
+        struct timeval time;
+        gettimeofday(&time,NULL);
+
+        srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+        // srand(time(nullptr));
+        uint64_t prob = rand() % halfDoubleProb + 1;
+        if (prob <= 1)
+            bitflip = true;
+
+        // now search for the device_map whether this row is weak or not
+        uint16_t col;
+        if (device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row - 2)] != nullptr) {
+            // this part is tricky.
+            // we have to corrupt memory access for row - 2's packet, not row's
+            // access.
+
+            // try corrupting thois packet.
+
+            // MemPacket *rh_mem_pkt;
+            // rh_mem_pkt = decodePacket(
+                // mem_pkt,
+                // mem_pkt->addr - 0b100000000000000000000,
+                // mem_pkt->size,
+                // true,
+                // true);
+            // rh_mem_pkt->corruptedAccess = true;
+            // free(rh_mem_pkt);
+            // mem_pkt->corruptedAccess = true;
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+
+            uint16_t col_idx = rand() % (uint16_t)device_map["0"]
+                    [std::to_string(bank_ref.bank)]
+                    [std::to_string(mem_pkt->row - 2)].size();
+            col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row - 2)][col_idx];
+
+            // TODO:
+            // Now delete this entry from the device map as the same bit
+            // (column in this case) cannot flip twice unless somehting new is
+            // written in the same column.
+
+            // XXX:
+            // I am using a simple method by keeping track of this column and
+            // not allowing this column to flip until a write happens on this
+            // column.
+
+            if (bank_ref.flagged_entries[mem_pkt->row - 2][col] == 1) {
+                bitflip = false;
+            }
+            bank_ref.flagged_entries[mem_pkt->row - 2][col] = 1;
+
+        }
+        else {
+            bitflip = false;
+        }
+
+        if (bitflip) {
+            // This is a half-double bitflip. This will only appear if
+            // HDBitflip is enabled.
+            DPRINTF(HDBitflip,
+                    "HD Bitflip at %#x, bank %d, row %d, col %d\n",
+                    mem_pkt->addr + col, bank_ref.bank, mem_pkt->row - 2, col);
+        }
+    }
+
+    if (bank_ref.rhTriggers[mem_pkt->row + 1][2] >= 1 &&
+            bank_ref.rhTriggers[mem_pkt->row][2] >= 1000) {
+
+        // half-double is rare. so we have to adjust the probability by a
+        // very large factor.
+        // flip bit here
+        bool bitflip = false;
+
+        // We cannot flip this bit with a probability of 1. therefore, we
+        // need the second probability factor to cause bitflips
+
+        // the rng of c uses time. so for all simulated mem addresses for 1 sec
+        // will have the same probability
+
+        struct timeval time;
+        gettimeofday(&time,NULL);
+
+        srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+        uint64_t prob = rand() % halfDoubleProb + 1;
+        if (prob <= 1)
+            bitflip = true;
+
+        // TODO: We need to flip a bit in the MemPacket for row +- 2
+
+        // if (bank_ref.weakColumns[mem_pkt->row + 2].test(0)) {
+        //     // this condition needs to be fixed/verified.
+        //     mem_pkt->corruptedAccess = true;
+        //     bank_ref.weakColumns[mem_pkt->row + 2].reset(0);
+        //     if (bitflip) {
+        //         mem_pkt->corruptedAccess = true;
+        //         bank_ref.weakColumns[mem_pkt->row - 2].reset(0);
+        //     }
+        // }
+
+        uint16_t col;
+        if (device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row + 2)] != nullptr) {
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            uint16_t col_idx = rand() % (uint16_t)device_map["0"]
+                    [std::to_string(bank_ref.bank)]
+                    [std::to_string(mem_pkt->row + 2)].size();
+            col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row + 2)][col_idx];
+            // mem_pkt->corruptedAccess = true;
+
+            if (bank_ref.flagged_entries[mem_pkt->row + 2][col] == 1)
+                bitflip = false;
+
+            bank_ref.flagged_entries[mem_pkt->row + 2][col] = 1;
+        }
+        else
+            bitflip = false;
+
+        if (bitflip)
+            DPRINTF(HDBitflip,
+                    "HD Bitflip at %#x, bank %d, row %d, col %d\n",
+                    mem_pkt->addr + col, bank_ref.bank, mem_pkt->row + 2, col);
+
+    }
+
+    // row `mem_pkt->row` was ACTIVATED. we need to check its neighborhood for
+    // bitflips.
+
+    bool single_sided = true, bitflip_status = false;
+
+    // std::cout << bank_ref.rhTriggers[mem_pkt->row][0] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][1] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][2] << " " <<
+    //         bank_ref.rhTriggers[mem_pkt->row][3] << " " <<
+    //         std::endl;
+    if (bank_ref.rhTriggers[mem_pkt->row][1]  >= rowhammerThreshold) {
+        // std::cout << mem_pkt->row - 1 << " " <<
+        // bank_ref.rhTriggers[mem_pkt->row - 1] << std::endl;
+        //" " << bank_ref.rhTriggers[mem_pkt->row + 1] << std::endl;
+        // this is a compound probability factor with a tunable parameter
+        // for double rowhammer attacks
+
+        // check the ndb of the this row:
+        // we dont know that the value of N is in an N-sided attack. so we
+        // only have to see whether (a) this row is a part of an N sided
+        // attack.
+        // we expect that the number of activates of the edge rows is similar.
+        // in order to not let this slip, we keep a difference variable called
+        // delta. the user can set this value.
+
+        // a dsrh row will have the fist bitflip
+        // check this
+        // int delta = 15;
+        // bool bitflip_status = true;
+        // if (bank_ref.rhTriggers[mem_pkt->row - 1] >
+        //         bank_ref.rhTriggers[mem_pkt->row + 1] - delta &&
+        //         bank_ref.rhTriggers[mem_pkt->row - 1] <
+        //         bank_ref.rhTriggers[mem_pkt->row + 1] + delta) {
+        //     // single sided rowhammer attack!
+        //     single_sided = true;
+        // }
+        // else {
+        //     // this has to be a double-sided rowhammer.
+        //     // find out if this is an edge case.
+        //     delta = 15;
+        //     if (bank_ref.rhTriggers[mem_pkt->row - 1] >
+        //             bank_ref.rhTriggers[mem_pkt->row + 1] - 4 * delta &&
+        //             bank_ref.rhTriggers[mem_pkt->row - 1] <
+        //             bank_ref.rhTriggers[mem_pkt->row + 1] + 4 * delta) {
+        //     // this is an edge row.
+        //     single_sided = true;
+        //     }
+        // }
+        // check this->row is an aggressor row and then check for its neighbors
+        if (bank_ref.aggressor_rows[mem_pkt->row] >= rowhammerThreshold/2 &&
+            bank_ref.aggressor_rows[mem_pkt->row - 2] >= rowhammerThreshold/2){
+                single_sided = false;
+                bitflip_status = true;
+
+        }
+
+        struct timeval time;
+        gettimeofday(&time,NULL);
+
+        if (single_sided) {
+            // tunable probability
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            uint64_t prob = rand() % singleSidedProb + 1;
+            if (prob <= 1)
+                // flip a bit!
+                bitflip_status = true;
+            // single sided bitflip should cause bitflips on both sides of the
+            // aggressor row.
+        }
+
+        if (!single_sided) {
+            // columns[mem_pkt->row + 1].test(0)) {
+            //     // this condition needs to be fixed/verified.
+            //     mem_pkt->corruptedAccess = true;
+            //     bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
+            // }{
+
+            // we need to flip a bit depending upon some probability
+            // struct timeval time;
+            gettimeofday(&time,NULL);
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+
+            uint64_t prob = rand() % doubleSidedProb + 1;
+            if (prob > 1)
+                bitflip_status = false;
+        }
+
+        uint16_t col;
+        if (device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row - 1)] != nullptr) {
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            uint16_t col_idx = rand() % (uint16_t)device_map["0"]
+                    [std::to_string(bank_ref.bank)]
+                    [std::to_string(mem_pkt->row - 1)].size();
+            col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row - 1)][col_idx];
+            // mem_pkt->corruptedAccess = true;
+            if (bank_ref.flagged_entries[mem_pkt->row - 1][col] == 1)
+                bitflip_status = false;
+
+            bank_ref.flagged_entries[mem_pkt->row - 1][col] = 1;
+        }
+        else
+            // it does not really matter what the bitflip status is. it has to
+            // be set to false at this point.
+            bitflip_status = false;
+
+
+        if (bitflip_status) {
+            if (rhStatDump) {
+                std::ofstream outfile;
+                outfile.open("m5out/rowhammer.trace",
+                        std::ios::out | std::ios::app);
+
+                outfile << "Bitflip at 0x" << std::hex << mem_pkt->addr + col
+                        << std::dec << " bank " << (int)bank_ref.bank <<" row "
+                        << mem_pkt->row - 1 << " col " << col
+                        << " single-sided " << single_sided << std::endl;
+
+                outfile.close();
+            }
+            DPRINTF(RhBitflip,
+                "Bitflip at %#x, bank %d, row %d, col %d, single-sided %d\n",
+                mem_pkt->addr + col, bank_ref.bank, mem_pkt->row - 1, col,
+                single_sided);
+
+            // Also, need to figure out if the accessed
+            // column is flippable or not, and if it has
+            // previously been flipped
+            // also reset the trigger counter (by looking at weakColumns)
+
+            // If this access is turned out to be corrupted, we will
+            // reset that bit in the weakColumns, so that the future
+            // accesses of the column will not induce a bit flip
+
+            // kg -> ayaz: we need to talk on how to parse the device map
+            // we need exact columns/capacitors to model this part.
+
+            // if (bank_ref.weakColumns[mem_pkt->row - 1].test(0)) {
+            //     mem_pkt->corruptedAccess = true;
+            //     bank_ref.weakColumns[mem_pkt->row - 1].reset(0);
+            // }
+        }
+        // regardless of this row being a single or a double sided attack, its
+        // rowhammer counter will be set to zero.
+
+        // since now that rhtriggers is a vector, we need to take care of all
+        // the entries.
+
+        // we cannot flip the same bit, but we can flip the same row.
+        // TODO: uncomment these lines if you want to
+
+        // bank_ref.rhTriggers[mem_pkt->row][1] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row - 2][2] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row - 3][3] = 0;
+        // bank_ref.rhTriggers[mem_pkt->row + 1][0] = 0;
+
+    }
+
+    single_sided = true, bitflip_status = false;
+    // std::cout << bank_ref.rhTriggers[8136][2] << std::endl;
+    // std::cout << bank_ref.rhTriggers[8138][1] << std::endl;
+    if (bank_ref.rhTriggers[mem_pkt->row][2]  >= rowhammerThreshold) {
+
+        // this is a compound probability factor with a tunable parameter
+        // for double rowhammer attacks
+
+        // check the ndb of the this row:
+        // we dont know that the value of N is in an N-sided attack. so we
+        // only have to see whether (a) this row is a part of an N sided
+        // attack.
+        // we expect that the number of activates of the edge rows is similar.
+        // in order to not let this slip, we keep a difference variable called
+        // delta. the user can set this value.
+
+        // check this->row is an aggressor row and then check for its neighbors
+        if (bank_ref.aggressor_rows[mem_pkt->row] >= rowhammerThreshold/2 &&
+            bank_ref.aggressor_rows[mem_pkt->row + 2] >=
+            rowhammerThreshold/2) {
+                single_sided = false;
+                bitflip_status = true;
+            }
+
+        struct timeval time;
+        gettimeofday(&time,NULL);
+        if (single_sided) {
+            // tunable probability
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            uint64_t prob = rand() % singleSidedProb + 1;
+            if (prob <= 10)
+                // flip a bit!
+                bitflip_status = true;
+        }
+
+
+        if (!single_sided) {
+            // we need to flip a bit depending upon some probability
+            // struct timeval time;
+            gettimeofday(&time,NULL);
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            // srand(time(nullptr));
+            uint64_t prob = rand() % doubleSidedProb + 1;
+            if (prob > 1)
+                bitflip_status = false;
+        }
+
+        uint16_t col;
+        if (device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row + 1)] != nullptr) {
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+            uint16_t col_idx = rand() % (uint16_t)device_map["0"]
+                    [std::to_string(bank_ref.bank)]
+                    [std::to_string(mem_pkt->row + 1)].size();
+            col = (uint16_t)device_map["0"][std::to_string(bank_ref.bank)]
+                [std::to_string(mem_pkt->row + 1)][col_idx];
+            // mem_pkt->corruptedAccess = true;
+            if (bank_ref.flagged_entries[mem_pkt->row + 1][col] == 1)
+                bitflip_status = false;
+
+            bank_ref.flagged_entries[mem_pkt->row + 1][col] = 1;
+        }
+        else
+            bitflip_status = false;
+
+        if (bitflip_status) {
+            if (rhStatDump) {
+                std::ofstream outfile;
+                outfile.open("m5out/rowhammer.trace",
+                        std::ios::out | std::ios::app);
+
+                outfile << "Bitflip at 0x" << std::hex << mem_pkt->addr + col<<
+                        std::dec << " bank " << (int)bank_ref.bank << " row "
+                        << mem_pkt->row + 1 << " col " << col
+                        << " single-sided " << single_sided << std::endl;
+
+                outfile.close();
+            }
+            DPRINTF(RhBitflip,
+                "Bitflip at %#x, bank %d, row %d, col %d, single-sided %d\n",
+                mem_pkt->addr + col, bank_ref.bank, mem_pkt->row + 1, col,
+                single_sided);
+
+            // Also, need to figure out if the accessed
+            // column is flippable or not, and if it has
+            // previously been flipped
+            // also reset the trigger counter (by looking at weakColumns)
+            // If this access is turned out to be corrupted, we will
+            // reset that bit in the weakColumns, so that the future
+            // accesses of the column will not induce a bit flip
+
+            // if (bank_ref.weakColumns[mem_pkt->row + 1].test(0)) {
+            //     // this condition needs to be fixed/verified.
+            //     mem_pkt->corruptedAccess = true;
+            //     bank_ref.weakColumns[mem_pkt->row + 1].reset(0);
+            // }
+
+            // similar to the statement above, we do the same here.
+            // we cannot reset the counters to zero.
+            // the TRR mechanism has to do this. or a refresh event.
+
+            // bank_ref.rhTriggers[mem_pkt->row + 3][0] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row + 2][1] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row][2] = 0;
+            // bank_ref.rhTriggers[mem_pkt->row - 1][3] = 0;
+
+        }
+    }
+}
+
+void
+DRAMInterface::updateVictims(Bank& bank_ref, uint32_t row)
+{
+    // AYAZ:
+    // std::cout << "UV : " << bank_ref.bank << "rhTriggers size " <<
+        // bank_ref.rhTriggers.size() << std::endl;
+
+    // both sides of the aggressor row has to be incremented
+
+    assert(row != rowsPerBank);
+
+    // the difference between this version and rh-analysis is that instead of
+    // measuing blast radius = 2
+    // we need to increment +2 counters if +1 counters reach 1000.
+    // slow
+
+    if ((row <= 1) || (row >= rowsPerBank-2)) {
+        if (row == 0) {
+            if (bank_ref.rhTriggers[row][1]++ % 1024 == 0)
+                bank_ref.rhTriggers[row][0]++;
+        } else if (row == 1) {
+            bank_ref.rhTriggers[row][2]++;
+            bank_ref.rhTriggers[row][1]++;
+            bank_ref.rhTriggers[row][0]++;
+        } else if (row == rowsPerBank - 1) {
+            bank_ref.rhTriggers[row][3]++;
+            bank_ref.rhTriggers[row][2]++;
+        } else if (row == rowsPerBank - 2) {
+            bank_ref.rhTriggers[row][3]++;
+            bank_ref.rhTriggers[row][2]++;
+            bank_ref.rhTriggers[row][1]++;
+        }
+    }
+    else {
+        // modifying this logic
+        // nbd first.
+        bank_ref.rhTriggers[row][1]++;
+        bank_ref.rhTriggers[row][2]++;
+
+
+        bank_ref.rhTriggers[row][0]++;
+        bank_ref.rhTriggers[row][3]++;
+        // %1000 increment for the far counters. adjusted the count by 1.
+
+        // if (bank_ref.rhTriggers[row][1] % 999 == 0)
+        //     bank_ref.rhTriggers[row][0]++;
+
+        // if (bank_ref.rhTriggers[row][2] % 999 == 0)
+        //     bank_ref.rhTriggers[row][3]++;
+    }
+
+    // if (row != 0) {
+    //     bank_ref.rhTriggers[row-1]++;
+    // }
+
+    // // just to check my assumption that row numbers always start from 0
+    // assert(row != rowsPerBank);
+    // if (row != (rowsPerBank-1)) {
+    //     bank_ref.rhTriggers[row+1]++;
+    // }
+
+    // making sure that the activated row has its counter
+    // set to 0, only in case if it has not already been corrupted
+    // once we return flipped data, we can reset the rhTriggers for that
+    // row to restart the flipping cycle
+
+    // if (bank_ref.rhTriggers[row] < rowhammerThreshold) {
+    //     bank_ref.rhTriggers[row] = 0;
+    // }
+
+    // kg: the same needs to be done to the trr tables as well
+    //     the trr tables are reset (if necessary) in the refresh section,
+    //     where these are triggered.
+}
+
+
+
 void
 DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
                        Tick act_tick, uint32_t row)
@@ -185,11 +691,673 @@ DRAMInterface::activateBank(Rank& rank_ref, Bank& bank_ref,
     else
         act_at = ctrl->verifySingleCmd(act_tick, maxCommandsPerWindow, true);
 
+    if (!first_act) {
+        // first access to memory.
+        first_act = true;
+        DPRINTF(DRAM, "Memory was first ACTed at tick %d\n", act_at);
+
+        if (rhStatDump) {
+            // need to start the stat dumper here
+            std::ofstream outfile;
+            outfile.open(
+                "m5out/rowhammer.trace", std::ios::out | std::ios::trunc);
+            outfile << "# starting to capture row access for RH analysis" <<
+            std::endl;
+            outfile.close();
+        }
+
+        for (auto &b: rank_ref.banks) {
+            b.trr_table.resize(counterTableLength, std::vector<uint64_t>(4));
+            b.companion_table.resize(
+                companionTableLength, std::vector<uint64_t>(4));
+
+            // initializing flag_map
+            b.flagged_entries.resize(8192, std::vector<bool>(1024));
+        }
+        para_refreshes = 0;
+
+    }
     DPRINTF(DRAM, "Activate at tick %d\n", act_at);
 
+    // we have to keep a track of all the activates in the aggressor_table
+    bank_ref.aggressor_rows[row]++;
+    bool act_flag = false;
+    for (auto&  it: bank_ref.activated_row_list)
+        if (it == row) {
+            act_flag = true;
+            break;
+        }
+    if (!act_flag)
+        bank_ref.activated_row_list.push_back(row);
+
+    // we only model TRR for the three major DRAM vendors only.
+
+    switch (trrVariant) {
+        case 0: {
+            // this is basically no trr. it does absolutely nothing.
+            break;
+        }
+        case 1: {
+            // This corresponds to the table-based TRR from Vendor A.
+            // Vendor A is Samsung.
+            // There are two different TRR-triggered refreshes in this case.
+            // TRR induced refreshes are handles in the refresh section.
+
+            // kg: We use the trr_table here for this bank.
+            // 0 -> rank
+            // 1 -> bank
+            // 2 -> row
+            // 3 -> counter
+
+            bool found_flag = false;
+
+            for (int i = 0; i < std::max(
+                counterTableLength, bank_ref.entries); i++) {
+                // found this addr in the trr table.
+                if (bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+
+                    // TODO: Need to check whether this row is open.
+                    // I guess activateBank does not require this.
+                    found_flag = true;
+
+                    // since this row is accessed, we increment its counter by
+                    // 1. this information is used in the refresh section.
+                    bank_ref.trr_table[i][3]++;
+                    break;
+                }
+            }
+
+            // If the row is not found in the trr table.
+            if (!found_flag) {
+                // We have a row which is not in the TRR table. But we don't
+                // know if we want to put this row in the table or not.
+                // UTRR does not discuss this.
+
+                // We use a small companion counter table, which acts like a
+                // buffer to insert new rows. Rows gets replaced here. This
+                // approach to track rows is similar to the technique proposed
+                // by Prohit (Son et. al., DAC 2017).
+
+                // We use two variables to find and track this row in the
+                // companion table.
+
+                int companion_idx = 0;
+                bool companion_found_flag = false;
+
+                for (int i = 0 ; i < std :: max(companionTableLength,
+                        bank_ref.companion_entries); i++) {
+                    // found this address in the companion table.
+                    if (bank_ref.companion_table[i][0] == rank_ref.rank &&
+                            bank_ref.companion_table[i][1] == bank_ref.bank &&
+                            bank_ref.companion_table[i][2] == row) {
+
+                        companion_found_flag = true;
+
+                        // increment this counter by 1. This value is used to
+                        // promote riws from the comapnion table to the trr
+                        // table.
+                        bank_ref.companion_table[i][3]++;
+
+                        // companion index is set to i.
+                        companion_idx = i;
+                        break;
+                    }
+                }
+
+                if (!companion_found_flag) {
+                    // If we did not find this row in the companion table, then
+                    // we make a new entry for this row in the companion table.
+
+                    // `idx` is used to find the index in the companion table
+                    // to insert this row.
+                    int idx = 0;
+
+                    // Find if there is space in the companion table for a new
+                    // row.
+
+                    if (bank_ref.companion_entries < companionTableLength) {
+
+                        // This is left in the companion table.
+
+                        idx = (int)bank_ref.companion_entries;
+
+                        // TODO: This part of the code is not required. Verify
+                        // this claim.
+                        if (bank_ref.companion_entries <
+                                companionTableLength - 1)
+                            bank_ref.companion_entries += 1;
+                    }
+                    else {
+                        // there is no space left in the companion table.
+                        // TODO: Do we insert this row at the end, replacing
+                        // anything there? OR, Do we find the lowest counter
+                        // count for the row to replace?
+
+                        assert(idx == 0);
+
+                        // the number of entries in the companion table cannot
+                        // be more than the total length of the table.
+
+                        assert(bank_ref.companion_entries
+                                == companionTableLength);
+
+                        // using the second approach here, i.e., entry with the
+                        // lowest count will be replaced.
+                        for (int i = 0; i < companionTableLength ; i++) {
+                            if (bank_ref.companion_table[idx][3] >
+                                    bank_ref.companion_table[i][3])
+                                idx = i;
+                        }
+                    }
+
+                    // assert idx is within the counterTableLength range.
+                    assert(bank_ref.companion_entries < companionTableLength);
+
+                    // creating this entry in the companion table.
+
+                    bank_ref.companion_table[idx][0] = rank_ref.rank;
+                    bank_ref.companion_table[idx][1] = bank_ref.bank;
+                    bank_ref.companion_table[idx][2] = row;
+                    bank_ref.companion_table[idx][3] = 1;
+                }
+                else {
+                    // found this row in the companion table. We now have to
+                    // decide whether we promote this row to the trr_table or
+                    // we just continue with our experiments.
+
+                    // This row has more acts than the companion threshold,
+                    // then we promote this row to the trr_table.
+
+                    if (bank_ref.companion_table[companion_idx][3]
+                            > companionThreshold) {
+                        // We insert this row in the trr_table. Is there space?
+                        // kg: Find out if there is space in the TRR table for
+                        // a new row insertion.
+                        int trr_idx = 0;
+
+                        // Check if there is space in the trr table for a new
+                        // row.
+
+                        if (bank_ref.entries < counterTableLength) {
+                            // There is space in the trr table.
+
+                            trr_idx = (int)bank_ref.entries;
+                            // std :: cout << "_x " << trr_idx << " " <<
+                            // bank_ref.entries << std :: endl;
+
+                            // TODO: This part of the code might not be
+                            // required. Double check this.
+
+                            if (bank_ref.entries < counterTableLength - 1)
+                                bank_ref.entries++;
+                        }
+                        else {
+                            // there is no space for a new row.
+                            // TODO: We replace the trr entry with the least
+                            // act count. Verify this with the UTRR paper.
+
+                            // sanity checks.
+                            assert(trr_idx == 0);
+                            assert(bank_ref.entries == counterTableLength);
+
+                            for (int i = 0; i < counterTableLength ; i++) {
+                                if (bank_ref.trr_table[trr_idx][3] >
+                                        bank_ref.trr_table[i][3])
+                                    trr_idx = i;
+                            }
+                        }
+
+                        // sanity checks
+                        assert(trr_idx >= 0 && trr_idx < counterTableLength);
+
+                        bank_ref.trr_table[trr_idx][0] =
+                                bank_ref.companion_table[companion_idx][0];
+                        bank_ref.trr_table[trr_idx][1] =
+                                bank_ref.companion_table[companion_idx][1];
+                        bank_ref.trr_table[trr_idx][2] =
+                                bank_ref.companion_table[companion_idx][2];
+                        bank_ref.trr_table[trr_idx][3] =
+                                bank_ref.companion_table[companion_idx][3];
+
+                        // An entry has been cleared in the companion table. we
+                        // need to adjust that in the companion table. Replace
+                        // the current idx with the last index.
+
+                        // RE: redoing this part in a simpler way.
+                        // sanity check: the companion_entries and the
+                        // companionTableLength has to be the same since i just
+                        // moved a row.
+
+                        // assert(bank_ref.companion_entries ==
+                        //         companionTableLength - 1);
+
+                        // companion_index is empty. the end row will be moved
+                        // to the companion_index
+
+                        if (companion_idx != std::min(companionTableLength,
+                                bank_ref.companion_entries) - 1)
+                            for (int i = 0 ; i < 4 ; i++)
+                                bank_ref.companion_table[companion_idx][i] =
+                                        bank_ref.companion_table[std::min(
+                                        companionTableLength,
+                                        bank_ref.companion_entries) - 1][i];
+
+                        bank_ref.companion_entries--;
+
+                        // for (int i = companion_idx ; i < std::min(
+                        //         companionTableLength,
+                        //         bank_ref.companion_entries); i++) {
+
+                        //     // find the end of the table.
+                        //     int max = std::min(companionTableLength,
+                        //             bank_ref.companion_entries) - 1;
+                        //     if (companion_idx != max) {
+                        //         bank_ref.companion_table[i][0] =
+                        //         bank_ref.companion_table[i + 1][0];
+                        //         bank_ref.companion_table[i][1] =
+                        //         bank_ref.companion_table[i + 1][1];
+                        //         bank_ref.companion_table[i][2] =
+                        //         bank_ref.companion_table[i + 1][2];
+                        //         bank_ref.companion_table[i][3] =
+                        //         bank_ref.companion_table[i + 1][3];
+                        //         }
+                        //     }
+
+                        // std::cout << "end" << std::endl;
+                        // if (bank_ref.companion_entries == 0) {
+                        //     // print the companion table
+                        //     for (int i = 0 ; i < std :: max(
+                        //             companionTableLength,
+                        //             bank_ref.companion_entries); i++) {
+                        //         std :: cout <<
+                        //         bank_ref.companion_entries[i][0] << " " <<
+                        //             bank_ref.companion_entries[i][1] <<
+                        //             " " << bank_ref.companion_entries[i][2]
+                        //              << " " <<
+                        //              bank_ref.companion_entries[i][3]
+                        //             << std :: endl;
+                        //     }
+
+                        // }
+                        assert(
+                            bank_ref.companion_entries < companionTableLength);
+                    }
+
+                }
+            }
+
+            DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d, "
+                    "Companion Entries %d\n", rank_ref.rank, bank_ref.bank,
+                    row, bank_ref.entries, bank_ref.companion_entries);
+
+            break;
+        }
+        case 2: {
+            // This is the one with the random sampler.
+            // We will use a table. Otherwise, we don't know how to track all
+            // the different rows activated.
+
+            // the catch is that it is a single entry table.
+            // this is SK Hynix from U-TRR paper.
+
+            // we also need to decide whether we need to sample this row or not
+            // we use a probability function based on the address' bank, rank
+            // and row bits. This should work as this is consistently observed
+            // on real dimms.
+
+            // We reuse the variable trr_table length. The sampler will
+            // randomly enter these rows into the table. the sampler acts at
+            // ACT time.
+
+            // picking the first 10 bits. xoring them to see if that row needs
+            // to be entered in the table or not.
+
+            // TODO: XXX: Missing feature.
+            // There is no way to know if a particular row's ACT is closing in
+            // on a tREFI request. This TRR activates its sampler close to the
+            // tREFI instruction.
+
+            int select_count = 0;
+            int recreated_address = bank_ref.bank + rank_ref.rank + row;
+            bool selected = false;
+
+            // this rng is really difficult to implement and match it with an
+            // actual SK Hynix DIMM.
+
+            while (recreated_address != 0) {
+                selected = selected ^ (recreated_address % 2);
+                recreated_address /=2;
+                if (++select_count == 10)
+                    break;
+            }
+
+            DPRINTF(RhInhibitor, "Looking into the rng function "
+                " row %d, selected %d, recreated_address %d\n",
+                row, selected, recreated_address);
+
+            if (selected) {
+                // This row is selected to be sampled. Therefore we proceed to
+                // add this row in the counter table.
+
+                // find space in the trr_table. companion_table is not needed
+                // in this case.
+                // There is space in the companion table for a new row.
+                uint8_t trr_idx = 0;
+
+                // before doing this, we need to check whether we have an entry
+                // for this row or not.
+
+                // forcing entry to the companion table when it is full.
+
+                bool found_flag = false;
+                for (int i = 0; i < std::max(
+                        counterTableLength, bank_ref.entries); i++) {
+                    // found this addr
+                    if (bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+                            // TODO: Need to check whether this row is open.
+                            // I guess activateBank does not require this.
+                            found_flag = true;
+                            bank_ref.trr_table[i][3]++;
+                            break;
+                        }
+                }
+
+                if (!found_flag) {
+                    // only if the table entry for that particular row is
+                    // missing we create a new entry in this table.
+
+                    // otherwise, we are done in this step. We don't need to
+                    // cover this part of the program.
+
+                    if (bank_ref.entries < counterTableLength) {
+                        trr_idx = bank_ref.entries;
+                        if (bank_ref.entries < counterTableLength - 1)
+                            bank_ref.entries += 1;
+                    }
+                    else {
+                        for (int i = 0; i < counterTableLength ; i++) {
+                            if (bank_ref.trr_table[trr_idx][3] >
+                                    bank_ref.trr_table[i][3])
+                                trr_idx = i;
+                        }
+                    }
+                    bank_ref.trr_table[trr_idx][0] = rank_ref.rank;
+                    bank_ref.trr_table[trr_idx][1] = bank_ref.bank;
+                    bank_ref.trr_table[trr_idx][2] = row;
+                    bank_ref.trr_table[trr_idx][3] = 1;
+                }
+            }
+            // we are done in the sampler phase of the program. We just need to
+            // take care of the inhibitor phase of the program.
+            DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d\n",
+                    rank_ref.rank, bank_ref.bank, row, bank_ref.entries);
+            break;
+        }
+        case 3: {
+
+            // This case corresponds Vendor C from the U-TRR paper. The major
+            // points in this TRR implementation is the 2k activate count. It
+            // also has a probabilistic sampler, which samples rows. For
+            // simplicity, we will keep a track of the first 2k accesses
+            // deterministically.
+            // XXX: How?
+
+            // The table to store this information is fixed. So, we are limited
+            // by space of the trr table.
+
+            // This TRR is also triggered in a per-bank basis.
+
+            // act_count is reset when it reaches 2k in the inhibitor phase.
+
+            bank_ref.act_count++;
+
+            // We use the same random function to keep a track of these
+            // aggressor rows in the table.
+
+            int select_count = 0;
+            int recreated_address = bank_ref.bank + rank_ref.rank + row;
+            bool selected = false;
+
+            while (recreated_address != 0) {
+                selected = selected ^ (recreated_address % 2);
+                recreated_address /=2;
+                if (++select_count == 10)
+                    break;
+            }
+
+            if (selected) {
+                // similar procedure as Vendor B. We traverse the table to find
+                // this entry in the table. This counter is necessary to issue
+                // refreshes in the inhibitor phase.
+
+                // This row is selected to be sampled. Therefore we proceed to
+                // add this row in the counter table.
+
+                // before doing this, we need to check whether we have an entry
+                // for this row or not.
+
+                bool found_flag = false;
+                for (int i = 0; i < std::max(
+                        counterTableLength, bank_ref.entries); i++) {
+                    // found this addr
+                    if (bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+                            // TODO: Need to check whether this row is open.
+                            // I guess activateBank does not require this.
+                            found_flag = true;
+                            bank_ref.trr_table[i][3]++;
+                            break;
+                        }
+                }
+
+                if (!found_flag) {
+                    // find space in the trr_table. companion_table is not
+                    // needed in this case. There is space in the companion
+                    // table for a new row.
+                    uint8_t trr_idx = 0;
+                    // only if the table entry for that particular row is
+                    // missing we create a new entry in this table. otherwise,
+                    // we are done in this step. We don't need to cover this
+                    // part of the program.
+                    if (bank_ref.entries < counterTableLength) {
+                        trr_idx = bank_ref.entries;
+                        if (bank_ref.entries < counterTableLength - 1)
+                            bank_ref.entries += 1;
+                    }
+                    else {
+                        for (int i = 0; i < counterTableLength ; i++) {
+                            if (bank_ref.trr_table[trr_idx][3] >
+                                    bank_ref.trr_table[i][3])
+                                trr_idx = i;
+                        }
+                    }
+                    bank_ref.trr_table[trr_idx][0] = rank_ref.rank;
+                    bank_ref.trr_table[trr_idx][1] = bank_ref.bank;
+                    bank_ref.trr_table[trr_idx][2] = row;
+                    bank_ref.trr_table[trr_idx][3] = 1;
+                }
+            }
+
+            // we just need to program the inhibitor phase of the program now.
+
+            break;
+        }
+        case 4: {
+            // TRR Vendor A
+
+            // Experimental version without companion table.
+            // Companion table parameters are ignored.
+
+            // try searching in the trr_table first.
+            bool found_flag = false;
+            for (int i = 0; i < std::max(counterTableLength,
+                    bank_ref.entries); i++) {
+                // found this addr in the trr table.
+                if (bank_ref.trr_table[i][0] == rank_ref.rank &&
+                        bank_ref.trr_table[i][1] == bank_ref.bank &&
+                        bank_ref.trr_table[i][2] == row) {
+
+                    // TODO: Need to check whether this row is open.
+                    // I guess activateBank does not require this.
+                    found_flag = true;
+
+                    // since this row is accessed, we increment its counter by
+                    // 1. this information is used in the refresh section.
+                    bank_ref.trr_table[i][3]++;
+                    break;
+                }
+            }
+
+            // this row is not present in the TRR table. Therefore, we create a
+            // new entry for this row in the trr table.
+
+            if (!found_flag) {
+                // check if there is space in the trr table
+                if (bank_ref.entries < counterTableLength) {
+                    // there is space in the table. we just create a new entry
+                    // at the end of this table.
+                    assert(bank_ref.entries < counterTableLength);
+                    bank_ref.trr_table[bank_ref.entries][0] = rank_ref.rank;
+                    bank_ref.trr_table[bank_ref.entries][1] = bank_ref.bank;
+                    bank_ref.trr_table[bank_ref.entries][2] = row;
+                    bank_ref.trr_table[bank_ref.entries][3] = 1;
+                    bank_ref.entries++;
+                }
+                else {
+                    // there is no space in the trr table. replace the row with
+                    // the lowest act count.
+                    int min_idx = 0;
+                    assert(bank_ref.entries == counterTableLength);
+                    for (int i = 0 ; i < counterTableLength; i++)
+                        if (bank_ref.trr_table[min_idx][3] <
+                                bank_ref.trr_table[i][3])
+                            min_idx = i;
+
+                    // sanity check
+                    assert(min_idx >= 0 && min_idx < counterTableLength);
+
+                    bank_ref.trr_table[min_idx][0] = rank_ref.rank;
+                    bank_ref.trr_table[min_idx][1] = bank_ref.bank;
+                    bank_ref.trr_table[min_idx][2] = row;
+                    bank_ref.trr_table[min_idx][3] = 1;
+                }
+            }
+            // we are done in the sampler phase of the program. We just need to
+            // take care of the inhibitor phase of the program.
+            DPRINTF(RowHammer, "Rank %d, Bank %d, Row %d, Entries %d\n",
+                    rank_ref.rank, bank_ref.bank, row, bank_ref.entries);
+            break;
+        }
+
+        case 5: {
+            // this corresponds to PARA
+            // PARA does not have a sampler/counting mechanism. it just issues
+            // rowhammer refreshes with a probability of P.
+
+            struct timeval time;
+            gettimeofday(&time,NULL);
+
+            srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
+
+            uint64_t prob = rand() % 10000 + 1;
+
+            // the inhibitor cannot be installed here. however, explicit
+            // refreshing can only be done here.
+
+            // violates timing parameters.
+
+            bool inhibitor_status = false;
+            if (prob <= 100)
+                inhibitor_status = true;
+
+            int num_neighbor_rows = 1;
+
+            // if inhibitor is true, then we just issue refreshes to the
+            // neighboring rows of the currently activated row.
+
+            if (inhibitor_status) {
+
+                for (int i = 0 ; i < num_neighbor_rows; i++) {
+                            DPRINTF(RhInhibitor, "Inhibitor triggered "
+                            "refresh in rank %d, bank %d, row %d, "
+                            "counter value %d, %d, %d, %d, \t"
+                            "Issued PARA refreshes %lld\n",
+                            rank_ref.rank,
+                            bank_ref.bank,
+                            row,
+                            bank_ref.rhTriggers[row - 1][2],
+                            bank_ref.rhTriggers[row - 2][3],
+                            bank_ref.rhTriggers[row + 1][1],
+                            bank_ref.rhTriggers[row + 2][0],
+                            para_refreshes + 2
+                    );
+                    para_refreshes += 2;
+                    int local_count = 2;
+                    if (row > 1 && row < (rowsPerBank - 2)) {
+                        bank_ref.rhTriggers[row - i - 1][2] = 0;
+                        bank_ref.rhTriggers[row - i - 2][3] = 0;
+                        bank_ref.rhTriggers[row - i + 1][1] = 0;
+                        bank_ref.rhTriggers[row - i + 2][0] = 0;
+                    }
+                    else if (row == 1) {
+                        bank_ref.rhTriggers[row - i - 1][2] = 0;
+                        bank_ref.rhTriggers[row - i + 1][1] = 0;
+                        bank_ref.rhTriggers[row - i + 2][0] = 0;
+                    }
+                    else if (row == 0) {
+                        bank_ref.rhTriggers[row - i + 1][1] = 0;
+                        bank_ref.rhTriggers[row - i + 2][0] = 0;
+                        local_count = 1;
+                    }
+                    else if (row == rowsPerBank - 2) {
+                        bank_ref.rhTriggers[row - i - 1][2] = 0;
+                        bank_ref.rhTriggers[row - i - 2][3] = 0;
+                        bank_ref.rhTriggers[row - i + 1][1] = 0;
+                    }
+                    else if (row == rowsPerBank - 1) {
+                        bank_ref.rhTriggers[row - i - 1][2] = 0;
+                        bank_ref.rhTriggers[row - i - 2][3] = 0;
+                        local_count = 1;
+                    }
+                    else {
+                        fatal("Unexpected row condition encountered!");
+                    }
+
+                    para_refreshes += local_count;
+                    DPRINTF(RhInhibitor, "Inhibitor triggered "
+                            "refresh in rank %d, bank %d, row %d, "
+                            "counter value %d, %d, %d, %d, \t"
+                            "Issued PARA refreshes %lld\n",
+                            rank_ref.rank,
+                            bank_ref.bank,
+                            row,
+                            bank_ref.rhTriggers[row - 1][2],
+                            bank_ref.rhTriggers[row - 2][3],
+                            bank_ref.rhTriggers[row + 1][1],
+                            bank_ref.rhTriggers[row + 2][0],
+                            para_refreshes
+                    );
+                }
+            }
+            break;
+        }
+
+        default:
+            fatal("Unknown trr_variant detected!");
+            break;
+    }
+
+    // No TRR code beyound this point.
     // update the open row
     assert(bank_ref.openRow == Bank::NO_ROW);
     bank_ref.openRow = row;
+
+    updateVictims(bank_ref, row);
 
     // start counting anew, this covers both the case when we
     // auto-precharged, and when this access is forced to
@@ -366,6 +1534,25 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
     // get the bank
     Bank& bank_ref = rank_ref.banks[mem_pkt->bank];
 
+    // hammersim
+    if (!mem_pkt->isRead()) {
+        // this is a write operation.
+        for (int i = 0 ; i < 1024; i++) {
+            bank_ref.flagged_entries[mem_pkt->row][i] = false;
+        }
+    }
+
+    if (mem_pkt->row != 0) {
+        // now that rhtirggers is a vector, there is no self rh triggers
+        DPRINTF(DRAM, "thTrigger [row] %ld [row - 1] %ld  [row - 2]\n",
+                bank_ref.rhTriggers[mem_pkt->row - 1][2],
+                bank_ref.rhTriggers[mem_pkt->row][1],
+                bank_ref.rhTriggers[mem_pkt->row][0]);
+    }
+    else {
+        DPRINTF(DRAM, "Rhammer triggers  %ld \n",
+                bank_ref.rhTriggers[mem_pkt->row + 1][0]);
+    }
     // for the state we need to track if it is a row hit or not
     bool row_hit = true;
 
@@ -612,6 +1799,21 @@ DRAMInterface::doBurstAccess(MemPacket* mem_pkt, Tick next_burst_at,
         stats.perBankWrBursts[mem_pkt->bankId]++;
 
     }
+    // hammersim
+    // kg: now, if we access a row, its rhtrigger counter has to be set to 0.
+    // this is because we accessed the row. this can potentially become the
+    // starting point for context sensitive rowhammer analysis. if this row's
+    // act count in > 1000, this might be a half double attack
+
+    // AYAZ: Before returning, make sure that we update the pkt to indicate
+    // that the row is corrupted or not
+    checkRowHammer(bank_ref, mem_pkt);
+
+    // accessing a row resets its own rowhammer disturbance.
+    bank_ref.rhTriggers[mem_pkt->row - 1][2] = 0;
+    bank_ref.rhTriggers[mem_pkt->row - 2][3] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 1][1] = 0;
+    bank_ref.rhTriggers[mem_pkt->row + 2][0] = 0;
     // Update bus state to reflect when previous command was issued
     return std::make_pair(cmd_at, cmd_at + burst_gap);
 }
@@ -653,6 +1855,17 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
       activationLimit(_p.activation_limit),
       wrToRdDlySameBG(tWL + _p.tBURST_MAX + _p.tWTR_L),
       rdToWrDlySameBG(_p.tRTW + _p.tBURST_MAX),
+      rowhammerThreshold(_p.rowhammer_threshold),
+      deviceFile(_p.device_file),
+      counterTableLength(_p.counter_table_length),
+      trrVariant(_p.trr_variant),
+      trrThreshold(_p.trr_threshold),
+      companionTableLength(_p.companion_table_length),
+      companionThreshold(_p.companion_threshold),
+      singleSidedProb(_p.single_sided_prob),
+      halfDoubleProb(_p.half_double_prob),
+      doubleSidedProb(_p.double_sided_prob),
+      rhStatDump(_p.rh_stat_dump),
       pageMgmt(_p.page_policy),
       maxAccessesPerRow(_p.max_accesses_per_row),
       timeStampOffset(0), activeRank(0),
@@ -695,6 +1908,38 @@ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
             rowBufferSize, burstsPerRowBuffer);
 
     rowsPerBank = capacity / (rowBufferSize * banksPerRank * ranksPerChannel);
+
+    // hammersim
+    for (int r = 0; r < ranksPerChannel; r++) {
+        for (int b = 0; b < ranks[r]->banks.size(); b++)
+            {
+                // AYAZ: Also initialize the rowhammer activates vector
+                // updating resizing to account for 4 elelemts per rhtrigger.
+                ranks[r]->banks[b].rhTriggers.resize(rowsPerBank);
+                for (int rt = 0; rt < rowsPerBank; rt++) {
+                    // around a victim row.
+                    ranks[r]->banks[b].rhTriggers[rt].resize(4, 0);
+                }
+                ranks[r]->banks[b].aggressor_rows.resize(rowsPerBank, 0);
+                // AYAZ: initializing every column with flip bit set
+                // Need to consult the device map here and set the weak
+                // columns accordingly
+                ranks[r]->banks[b].weakColumns.resize(rowsPerBank, 0x0);
+            }
+    }
+
+
+    // AYAZ: At this point we can get the data from the file and update
+    // the weakColumns structure.
+
+    // kg: reimplementing this part using json files as device maps.
+    DPRINTF(RowHammer, "Initializing device map.\n");
+
+    std::ifstream f(deviceFile);
+    device_map = nlohmann::json::parse(f);
+
+    DPRINTF(RowHammer, "Initialized device map successfully!\n");
+
 
     // some basic sanity checks
     if (tREFI <= tRP || tREFI <= tRFC) {
@@ -1441,6 +2686,445 @@ DRAMInterface::Rank::processRefreshEvent()
         assert(pwrState == PWR_REF);
 
         assert(!powerEvent.scheduled());
+
+
+        // AYAZ: this is the point where the current
+        // refresh is done, so we should be able to
+        // check how many refreshes are done so far
+        // and if the total refreshes has has gone
+        // through an entire cycle (8192 for DDR4),
+        // I think at that point all the trigger
+        // counters can be reset to 0?
+        // we can also implement a simple distributed
+        // refresh scheme as well. But, I think it is ok
+        // to reset things after 8192 refreshes as well.
+
+        // increment the refresh counter
+        dram.refreshCounter++;
+
+        // cannot have a bitflip until this point
+
+        int num_neighbor_rows = 0;
+
+        // the trr implementation is different than the og version implemented
+        // here in this code.
+
+        // There are only three cases. subversions are interleaved/switched
+        // based on the refreshCounter count.
+
+        switch(dram.trrVariant) {
+            case 0:
+                // This is no TRR Variant. It does absolutely nothing.
+                break;
+            case 1:
+            case 4:
+                // TRR variant A always picks exactly 2 rows with the
+                // highest activation count.
+                num_neighbor_rows = 2;
+                // ensure that the number of rows to be refreshed is not 0
+
+                if (dram.refreshCounter % 9 == 0) {
+                    // We need to traverse all the TRR tables per bank to find
+                    // out which row to refresh.
+                    std::cout << "refresh_counter " << dram.refreshCounter
+                        << std::endl;
+                    // We iterate over all the tables of each bank
+                    for (auto &b: banks) {
+
+                        bool inhibitor_flag = false;
+                        // TODO:
+                        // TRR can refresh all rows which has > th hammer count
+                        int max_idx = 0;
+                        for (int i = 0 ; i < std::min(b.entries,
+                                dram.counterTableLength) ; i++) {
+                            // all refresh
+                            // i's hammer count should be more than the set
+                            // threshold.
+                            // max_idx should have the highest hammers
+                            // if i's hammer count is < max_idx, then we
+                            // swap these two.
+                            std::cout << b.trr_table[i][0] <<
+                                " " << b.trr_table[i][1] <<
+                                " " << i << b.trr_table[i][2] <<
+                                " " << b.trr_table[i][3] << std::endl;
+                            if (b.trr_table[i][3] > dram.trrThreshold) {
+                                if (b.trr_table[max_idx][3] < b.trr_table[i][3]
+                                    ) {
+                                    inhibitor_flag = true;
+                                    max_idx = i;
+                                    }
+                                else {
+                                    // max_idx still has more activates than i
+                                    // we just need to verify whether it has
+                                    // more hammers than the threshold.
+                                    if (b.trr_table[max_idx][3] >
+                                            dram.trrThreshold)
+                                        inhibitor_flag = true;
+                                    // else max_idx still hasn't reached th.
+                                    // do nothing basically
+                                }
+                            }
+                        }
+
+                        if (inhibitor_flag) {
+                            // this is where the refresh is happening.
+                            // currently there is no way of counting the
+                            // extra latency (none) or the power this step
+                            // consumes.
+                            DPRINTF(RhInhibitor, "Inhibitor triggered refresh "
+                                            "in rank %d, bank %d, row %d, "
+                                            "count %d, idx %d Count %d \t "
+                                            "Total TRR refreshes %lld\n",
+                                            b.trr_table[max_idx][0],
+                                            b.trr_table[max_idx][1],
+                                            b.trr_table[max_idx][2],
+                                            b.trr_table[max_idx][3],
+                                            max_idx, dram.trrThreshold,
+                                            dram.num_trr_refreshes + (
+                                                2 * num_neighbor_rows
+                                            )
+                            );
+                            // found an entry with more than threshold number
+                            // of activates. it is important to note that
+                            // entries in the trr table isn't cleared.
+
+                            b.trr_table[max_idx][3] = 0;
+                            dram.num_trr_refreshes += 2 * num_neighbor_rows;
+
+                            // need to reset the rhTriggers too for the victim
+                            // rows.
+                            // std::cout << b.trr_table[max_idx][2]
+                            //       << std::endl;
+                            // for (int j = 0 ; j < num_neighbor_rows; j++) {
+                            //     std::cout << b.trr_table[max_idx][2] <<
+                            //       " " << j << " " <<
+                            //       b.trr_table[max_idx][2] - j - 1 << " " <<
+                            //       b.trr_table[max_idx][2] + j + 1 << " " <<
+                            //       b.rhTriggers[292][2] << " ";
+                            //     b.rhTriggers[
+                            //          b.trr_table[max_idx][2] - j - 1] = 0;
+                            //     b.rhTriggers[
+                            //          b.trr_table[max_idx][2] + j + 1] = 0;
+                            //     std::cout <<
+                            //          b.rhTriggers[
+                            //          b.trr_table[max_idx][2] - j - 2][2] <<
+                            //          " " <<
+                            // b.rhTriggers[b.trr_table[max_idx][2] + j - 1][2]
+                            // << std::endl;
+
+                            // this logic should be bypassed when the number of
+                            // aggressor rows will be more than the trr_table's
+                            // size.
+
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][0] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 2][2] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][3] =
+                                    0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][3] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 2][1] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][0] =
+                                    0;
+                            // }
+                        }
+                    }
+                }
+                break;
+
+                // Number of neighboring rows is the a little confusing for
+                // this version of the code.
+                // break;
+
+            case 2:
+                // This is Vendor B from the U-TRR paper.
+                num_neighbor_rows = 2;
+
+                if (dram.refreshCounter % 2 == 0 ||
+                        dram.refreshCounter % 4 == 0 ||
+                        dram.refreshCounter % 9 == 0) {
+                    // We need to refresh the row with the maximum number of
+                    // activates across all the tables. Although this row is
+                    // maintained per bank, but I think refreshing the max
+                    // among the max per bank will do the trick.
+
+                    // we need traffic generators for rh > 1 bank to validate
+                    // the above statement.
+
+                    // TODO: use a definite variable for this
+                    // int bank_count = banks.size();
+                    // for (auto &b: banks)
+                    //     bank_count++;
+                    // vector<uint64_t>potential_refresh_table(bank_count);
+
+                    bool inhibitor_flag = false;
+                    int bank_count = 0;
+                    // TODO:
+                    // TRR can refresh all rows which has > th hammer count
+                    int max_bank_idx = 0, max_idx = 0, max_val;
+                    // We iterate over all the tables of each bank
+                    for (auto &b: banks) {
+                        if (bank_count == 0)
+                            max_val = b.trr_table[max_idx][3];
+
+                        // this index is the highest
+                        if (max_val > dram.trrThreshold)
+                            inhibitor_flag = true;
+
+                        for (int i = 0 ; i < std::min(b.entries,
+                                dram.counterTableLength) ; i++) {
+                            // all refresh
+                            // i's hammer count should be more than the set
+                            // threshold.
+                            // max_idx should have the highest hammers
+                            // if i's hammer count is < max_idx, then we
+                            // swap these two.
+                            if (b.trr_table[i][3] > dram.trrThreshold) {
+                                if (max_val < b.trr_table[i][3]
+                                    ) {
+                                    max_idx = i;
+                                    max_bank_idx = bank_count;
+                                    // there is some row to refresh
+                                    inhibitor_flag = true;
+                                }
+                                // else {
+                                //     // max_idx still has more activates than
+                                //     // i. we just need to verify whether it
+                                //     // has more hammers than the threshold.
+                                //     if (b.trr_table[max_idx][3] >
+                                //             dram.trrThreshold)
+                                //         inhibitor_flag = true;
+                                //     // else max_idx still hasn't reached th.
+                                //     // do nothing basically
+                                // }
+                            }
+                        }
+                        bank_count++;
+                        // std :: cout << b.trr_table[max_idx][0] << " " <<
+                        //         b.trr_table[max_idx][1] << " " <<
+                        //         b.trr_table[max_idx][2] << " " <<
+                        //         b.trr_table[max_idx][3] << " " <<
+                        //         max_bank_idx << " " << max_idx << " " <<
+                        //         inhibitor_flag << std :: endl;
+                    }
+
+                    // it can refresh atmost one row among all banks.
+
+                    if (inhibitor_flag) {
+                        // this is where the refresh is happening.
+                        // currently there is no way of counting the
+                        // extra latency (none) or the power this step
+                        // consumes.
+                        bank_count = 0;
+                        for (auto &b: banks) {
+                            if (bank_count == max_bank_idx) {
+                                DPRINTF(RhInhibitor, "Inhibitor triggered "
+                                        "refresh in rank %d, bank %d, row %d, "
+                                        "count %d, idx %d Count %d \t "
+                                        "Total TRR refreshes %lld\n",
+                                        b.trr_table[max_idx][0],
+                                        b.trr_table[max_idx][1],
+                                        b.trr_table[max_idx][2],
+                                        b.trr_table[max_idx][3],
+                                        max_idx, dram.trrThreshold,
+                                        dram.num_trr_refreshes + (
+                                            2 * num_neighbor_rows
+                                        )
+                                );
+                                // found an entry with more than threshold
+                                // number of activates. it is important to note
+                                // that entries in the trr table isn't cleared.
+
+                                b.trr_table[max_idx][3] = 0;
+                                dram.num_trr_refreshes +=
+                                    2 * num_neighbor_rows;
+
+                                // need to reset the rhTriggers too for the
+                                // victim rows.
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][0] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][1] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 2][2] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][3] =
+                                    0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][3] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][2] = 0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 2][1] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][0] =
+                                    0;
+
+                                // so. sk hynix dimms cannot have half-doubles
+                                // impressive
+                                b.rhTriggers[b.trr_table[max_idx][2] - 4][3] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 3][2] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] - 1][1] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][0] = 0;
+
+                                b.rhTriggers[b.trr_table[max_idx][2] + 4][0] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 3][1] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2] + 1][2] =
+                                    0;
+                                b.rhTriggers[b.trr_table[max_idx][2]][3] = 0;
+
+                                // for (int j = 0 ; j < num_neighbor_rows; j++)
+                                // {
+                                //     b.rhTriggers[b.trr_table[
+                                //          max_idx][2] - j - 1] = 0;
+                                //     b.rhTriggers[b.trr_table[
+                                //          max_idx][2] + j + 1] = 0;
+                                // this logic should be bypassed when the
+                                // number of aggressor rows will be more than
+                                // the trr_table's size.
+                                // }
+                                // cannot refresh > 1 row.
+                                // break;
+                            }
+                            bank_count++;
+                        }
+                    }
+
+
+
+
+                    // for (auto)
+                }
+                break;
+            case 3:
+                // micron
+                break;
+            case 5: {
+                // this corresponds to PARA.
+
+                // we use a rng to issue inhibitor refreshes.
+                // since this mitigation mechanism issues refreshes on the fly,
+                // its inhibitor is within the act part of the code.
+                break;
+            }
+            default:
+                fatal("Unknown trr variant!");
+        }
+
+        // No TRR code beyond this point.
+
+        // TODO
+        // kg: This part has to fixed. We need to implement a RH table as
+        // opposed to a TRR table which keeps a track of all the RH attacks and
+        // is also responsible for flipping bits.
+
+        if (dram.refreshCounter == 4096 || dram.refreshCounter == 8192) {
+
+            // reset the threshold counters. this depends on the trr variant
+            // that we use.
+
+            switch(dram.trrVariant) {
+                case 0:
+                    if (dram.rhStatDump) {
+                        if (dram.refreshCounter % 8192 == 0) {
+                            std::ofstream outfile;
+                            outfile.open("m5out/rowhammer.trace",
+                                    std::ios::out | std::ios::app );
+                            outfile << "# dumping counters before refresh!" <<
+                                    std::endl;
+                            int bank_count = 0;
+                            for (auto &b: banks) {
+                                outfile << "bank: " << bank_count << std::endl;
+                                // prepare the vector
+                                // auto ut =
+                                //      unique(b.activated_row_list.begin(),
+                                //         b.activated_row_list.end());
+                                // b.activated_row_list.resize(
+                                //         distance(
+                                //              b.activated_row_list.begin(),
+                                //         ut));
+
+                                for (auto& it: b.activated_row_list) {
+                                    outfile << "\t" << it << "\t";
+                                    for (int i = 0; i < 4; i++)
+                                        outfile << b.rhTriggers[it][i] << " ";
+                                    outfile << std::endl;
+                                }
+                                bank_count++;
+                            }
+
+                            outfile.close();
+                        }
+                    }
+                    break;
+                case 1:
+                case 4:
+                    // there must be no cross variable initialziations.
+                    if (dram.refreshCounter % 4096 == 0) {
+                        std :: cout << "Refershed" << std :: endl;
+
+                        for (auto &b : banks) {
+                            for (int i = 0 ; i < dram.counterTableLength;
+                                    i++) {
+                                b.trr_table[i][3] = 0;
+                            }
+                            for (int i = 0 ; i < dram.companionTableLength;
+                                    i++) {
+                                b.companion_table[i][3] = 0;
+                            }
+                            for (int row_index = 0;
+                                    row_index < dram.rowsPerBank;row_index++) {
+                                for (int j = 0 ; j < 4; j++) {
+                                    b.rhTriggers[row_index][j] = 0;
+                                }
+                                b.aggressor_rows[row_index] = 0;
+                            }
+                        }
+                    }
+                    break;
+                case 2:
+                case 5:
+                    // there must be no cross variable initialziations.
+                    if (dram.refreshCounter % 8192 == 0) {
+                        std :: cout << "Refershed" << std :: endl;
+
+                        for (auto &b : banks) {
+                            for (int i = 0 ; i < dram.counterTableLength; i++)
+                                b.trr_table[i][3] = 0;
+                            for (int row_index = 0;
+                                    row_index < dram.rowsPerBank;row_index++) {
+                                for (int j = 0 ; j < 4; j++) {
+                                    b.rhTriggers[row_index][j] = 0;
+                                }
+                                b.aggressor_rows[row_index] = 0;
+                            }
+                        }
+                    }
+                    break;
+                case 3:
+                    break;
+                default:
+                    fatal("Unknown TRR Variant detected!");
+            }
+        }
+
+        // if (dram.refreshCounter == 4096) {
+        //     // these counters are for the general rowhammer detection.
+        //     // reset the threshold counters
+        //     for (auto &b : banks) {
+        //         for (int row_index = 0; row_index < dram.rowsPerBank;
+        //             row_index++) {
+        //             b.rhTriggers[row_index] = 0;
+        //         }
+        //     }
+        // }
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {
