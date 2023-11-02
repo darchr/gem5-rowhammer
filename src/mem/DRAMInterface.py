@@ -38,6 +38,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
 from m5.objects.MemCtrl import MemCtrl
 from m5.objects.MemInterface import *
 
@@ -52,6 +53,65 @@ class DRAMInterface(MemInterface):
     type = "DRAMInterface"
     cxx_header = "mem/dram_interface.hh"
     cxx_class = "gem5::memory::DRAMInterface"
+    
+    # All the rowhammer parameters are defined at the start of the
+    # DRAMInterface class. The default device file is used in case it is not
+    # provided by the user.
+    device_file = Param.String(os.path.join(os.getcwd(), "prob-005.json"),
+                                "Absolute path with the device info file."\
+                                "The default file is included in the repo.")
+
+    # This number is 50K for DDR4 and around 139K for DDR3
+    rowhammer_threshold = Param.Unsigned(50000, "Number of activates which "\
+                                            "trigger rowhammer")
+    # Rowhammer specific params.
+    counter_table_length = Param.Unsigned(16, "Number of entries of the TRR "\
+                                        "table for vendor B/counter-based "\
+                                        "maintains.")
+
+    # TRR variants must be within 0 to 3. No TRR, Vendors A, B and C
+    trr_variant = Param.Unsigned(0, "The different variant of TRR (0 - 3)")
+
+    # TRR threshold is a lower number than rowhammer_threshold. This must be a
+    # preemptive number which prevents filpping bits in the DRAM rows due to a
+    # rowhammer attack.
+    trr_threshold = Param.Unsigned(32768, "The threshold number used to "\
+                                        "refresh rows in the DRAM device.")
+
+    # I have used a companion table to implement TRR A as there was no source
+    # materials on how a new row is inserted into the TRR table for vendor A.
+    companion_table_length = Param.Unsigned(8, "The number of entres in the "\
+                                        "companion table.")
+
+    # Understandably, the threshold for the companion table is much lower than
+    # the actual TRR table.
+    companion_threshold = Param.Unsigned(1024, "The  threshold number "\
+                                        "used to promote a row from the "\
+                                        "companion table to the trr table")
+
+    # The dumper variables can be used to dump traces of the TRR and the RH
+    # triggers. This can be used for post-simulation analysis.
+    trr_stat_dump = Param.Bool(False, "Set this to True to dump TRR triggers"\
+                                    "and generate a TRR trace.")
+
+    # This is similar to trr_stat_dump.
+    rh_stat_dump = Param.Bool(False, "Set this to True to dump RH triggers"\
+                                    "and generate a RH trace. The trace is "\
+                                    "named as `rowhammer.trace`")
+
+    # Single-sided rowhammer probability.
+    single_sided_prob = Param.Unsigned(1e7, "Number of double-sided RH "\
+                                        "bitflips required before observing "\
+                                        "at least 1 single-sided bitflip.")
+
+    # Half-Double rowhammer probability factor.
+    half_double_prob = Param.Unsigned(1e9, "Number of half-double RH "\
+                                        "attacks required before observing "\
+                                        "at least 1 single-sided bitflip.")
+    
+    double_sided_prob = Param.Unsigned(1e5, "Number of double-sided RH "\
+                                        "attacks required to flip at least "\
+                                        "one bit in the sandwiched row.")
 
     # scheduler page policy
     page_policy = Param.PageManage("open_adaptive", "Page management policy")
