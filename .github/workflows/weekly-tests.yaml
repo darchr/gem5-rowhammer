@@ -13,15 +13,7 @@ on:
 jobs:
     build-gem5:
         runs-on: [self-hosted, linux, x64]
-<<<<<<< HEAD
-<<<<<<< HEAD
         container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
-=======
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
->>>>>>> misc: Copy .github directory from develop to stable (#458)
-=======
-        container: ghcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
->>>>>>> misc: Copy .github directory from develop to stable (#485)
         outputs:
             build-name: ${{ steps.artifact-name.outputs.name }}
         steps:
@@ -43,25 +35,13 @@ jobs:
             - run: echo "This job's status is ${{ job.status }}."
 
   # start running the very-long tests
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> misc: Copy .github directory from develop to stable (#458)
     testlib-very-long-tests:
         strategy:
             fail-fast: false
             matrix:
                 test-type: [gem5_library_example_tests, gem5_resources, parsec_benchmarks, x86_boot_tests]
         runs-on: [self-hosted, linux, x64]
-<<<<<<< HEAD
-<<<<<<< HEAD
         container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
-=======
-        container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
->>>>>>> misc: Copy .github directory from develop to stable (#458)
-=======
-        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
->>>>>>> misc: Copy .github directory from develop to stable (#485)
         needs: [build-gem5]
         timeout-minutes: 4320 # 3 days
         steps:
@@ -69,10 +49,8 @@ jobs:
               run: rm -rf ./* || true rm -rf ./.??* || true rm -rf ~/.cache || true
             - uses: actions/checkout@v3
               with:
-<<<<<<< HEAD
         # Scheduled workflows run on the default branch by default. We
         # therefore need to explicitly checkout the develop branch.
-<<<<<<< HEAD
                   ref: develop
             - uses: actions/download-artifact@v3
               with:
@@ -97,50 +75,6 @@ jobs:
                   path: output.zip
                   retention-days: 7
             - run: echo "This job's status is ${{ job.status }}."
-=======
-        ref: develop
-    - uses: actions/download-artifact@v3
-      with:
-        name: ${{needs.build-gem5.outputs.build-name}}
-        path: build/ALL
-    - run: chmod u+x build/ALL/gem5.opt
-    - name: very-long gem5_library_example_tests
-      working-directory: ${{ github.workspace }}/tests
-      run: ./main.py run gem5/gem5_library_example_tests --length very-long --skip-build -vv -t $(nproc)
-    - name: create zip of results
-      if: success() || failure()
-      run: |
-        apt-get -y install zip
-        zip -r output.zip tests/testing-results
-    - name: upload zip
-      if: success() || failure()
-      uses: actions/upload-artifact@v3
-      env:
-        MY_STEP_VAR: ${{github.job}}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
-      with:
-        name: ${{ env.MY_STEP_VAR }}
-        path: output.zip
-        retention-days: 7
-=======
-  testlib-very-long-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        test-type: [gem5_library_example_tests, gem5_resources, parsec_benchmarks, x86_boot_tests]
-    runs-on: [self-hosted, linux, x64, run]
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [build-gem5]
-    timeout-minutes: 4320 # 3 days
-    steps:
->>>>>>> misc: Merge develop .github into stable
-    - name: Clean runner
-      run:
-        rm -rf ./* || true
-        rm -rf ./.??* || true
-        rm -rf ~/.cache || true
-<<<<<<< HEAD
-    - run: echo "This job's status is ${{ job.status }}."
->>>>>>> misc: Add ".github" changes to minor release
 
     dramsys-tests:
         runs-on: [self-hosted, linux, x64]
@@ -153,7 +87,6 @@ jobs:
           # therefore need to explicitly checkout the develop branch.
                   ref: develop
 
-<<<<<<< HEAD
             - name: Checkout DRAMSys
               working-directory: ${{ github.workspace }}/ext/dramsys
               run: |
@@ -185,124 +118,3 @@ jobs:
             - dramsys-tests
         steps:
             - run: echo "This weekly tests have passed."
-=======
-  testlib-long-gem5-resources:
-    runs-on: [self-hosted, linux, x64, run]
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [build-gem5]
-    timeout-minutes: 4320 # 3 days
-    steps:
-=======
->>>>>>> misc: Merge develop .github into stable
-    - uses: actions/checkout@v3
-      with:
-        # Scheduled workflows run on the default branch by default. We
-        # therefore need to explicitly checkout the develop branch.
-        ref: develop
-    - uses: actions/download-artifact@v3
-      with:
-        name: ${{needs.build-gem5.outputs.build-name}}
-        path: build/ALL
-    - run: chmod u+x build/ALL/gem5.opt
-    - name: very-long ${{ matrix.test-type }}
-      working-directory: ${{ github.workspace }}/tests
-      run: ./main.py run gem5/${{ matrix.test-type }} --length very-long --skip-build -vv -t $(nproc)
-    - name: create zip of results
-      if: success() || failure()
-      run: |
-        apt-get -y install zip
-        zip -r output.zip tests/testing-results
-    - name: upload zip
-      if: success() || failure()
-      uses: actions/upload-artifact@v3
-      env:
-        MY_STEP_VAR: ${{ matrix.test-type }}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
-      with:
-        name: ${{ env.MY_STEP_VAR }}
-        path: output.zip
-        retention-days: 7
-    - run: echo "This job's status is ${{ job.status }}."
-<<<<<<< HEAD
->>>>>>> misc: Add ".github" changes to minor release
-=======
-=======
-        # Scheduled workflows run on the default branch by default. We
-        # therefore need to explicitly checkout the develop branch.
-                  ref: develop
-            - uses: actions/download-artifact@v3
-              with:
-                  name: ${{needs.build-gem5.outputs.build-name}}
-                  path: build/ALL
-            - run: chmod u+x build/ALL/gem5.opt
-            - name: very-long ${{ matrix.test-type }}
-              working-directory: ${{ github.workspace }}/tests
-              run: ./main.py run gem5/${{ matrix.test-type }} --length very-long --skip-build -vv -t $(nproc)
-            - name: create zip of results
-              if: success() || failure()
-              run: |
-                  apt-get -y install zip
-                  zip -r output.zip tests/testing-results
-            - name: upload zip
-              if: success() || failure()
-              uses: actions/upload-artifact@v3
-              env:
-                  MY_STEP_VAR: ${{ matrix.test-type }}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
-              with:
-                  name: ${{ env.MY_STEP_VAR }}
-                  path: output.zip
-                  retention-days: 7
-            - run: echo "This job's status is ${{ job.status }}."
->>>>>>> misc: Copy .github directory from develop to stable (#458)
-
-    dramsys-tests:
-        runs-on: [self-hosted, linux, x64]
-        container: ghcr.io/gem5/ubuntu-22.04_all-dependencies:latest
-        timeout-minutes: 4320 # 3 days
-        steps:
-            - uses: actions/checkout@v3
-              with:
-          # Scheduled workflows run on the default branch by default. We
-          # therefore need to explicitly checkout the develop branch.
-                  ref: develop
-
-            - name: Checkout DRAMSys
-              working-directory: ${{ github.workspace }}/ext/dramsys
-              run: |
-                  git clone https://github.com/tukl-msd/DRAMSys DRAMSys
-                  cd DRAMSys
-                  git checkout -b gem5 09f6dcbb91351e6ee7cadfc7bc8b29d97625db8f
-                  git submodule update --init --recursive
-
-      # gem5 is built separately because it depends on the DRAMSys library
-            - name: Build gem5
-              working-directory: ${{ github.workspace }}
-              run: scons build/ALL/gem5.opt -j $(nproc)
-
-<<<<<<< HEAD
-      - name: Run DRAMSys Checks
-        working-directory: ${{ github.workspace }}
-        run: |
-          ./build/ALL/gem5.opt configs/example/gem5_library/dramsys/arm-hello-dramsys.py
-          ./build/ALL/gem5.opt configs/example/gem5_library/dramsys/dramsys-traffic.py
-          ./build/ALL/gem5.opt configs/example/dramsys.py
->>>>>>> misc: Copy .github directory from develop to stable
-=======
-            - name: Run DRAMSys Checks
-              working-directory: ${{ github.workspace }}
-              run: |
-                  ./build/ALL/gem5.opt configs/example/gem5_library/dramsys/arm-hello-dramsys.py
-                  ./build/ALL/gem5.opt configs/example/gem5_library/dramsys/dramsys-traffic.py
-                  ./build/ALL/gem5.opt configs/example/dramsys.py
-    weekly-tests:
-        # The dummy job is used to indicate whether the weekly tests have
-        # passed or not. This can be used as status check for pull requests.
-        # I.e., if we want to stop pull requests from being merged if the
-        # weekly tests are failing we can add this job as a required status
-        # check.
-        runs-on: ubuntu-22.04
-        needs:
-            - testlib-very-long-tests
-            - dramsys-tests
-        steps:
-            - run: echo "This weekly tests have passed."
->>>>>>> misc: Copy .github directory from develop to stable (#458)

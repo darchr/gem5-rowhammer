@@ -33,10 +33,7 @@
 
 #include <algorithm>
 #include <climits>
-<<<<<<< HEAD
-=======
 #include <random>
->>>>>>> gpu-compute: Remove use of 'std::random_shuffle'
 
 #include "base/intmath.hh"
 #include "base/logging.hh"
@@ -104,8 +101,7 @@ AddressManager::getAddress(Location loc)
 AddressManager::Location
 AddressManager::getAtomicLoc()
 {
-    Location ret_atomic_loc = \
-        random_mt.random<unsigned long>() % numAtomicLocs;
+    Location ret_atomic_loc = random() % numAtomicLocs;
     atomicStructs[ret_atomic_loc]->startLocSelection();
     return ret_atomic_loc;
 }
@@ -210,9 +206,7 @@ AddressManager::AtomicStruct::getLoadLoc()
         // we can pick any location btw
         // locArray [firstMark : arraySize-1]
         int range_size = arraySize - firstMark;
-        Location ret_loc = locArray[
-                firstMark + random_mt.random<unsigned int>() % range_size
-        ];
+        Location ret_loc = locArray[firstMark + random() % range_size];
 
         // update loadStoreMap
         LdStMap::iterator it = loadStoreMap.find(ret_loc);
@@ -244,9 +238,7 @@ AddressManager::AtomicStruct::getStoreLoc()
     } else {
         // we can pick any location btw [firstMark : secondMark-1]
         int range_size = secondMark - firstMark;
-        Location ret_loc = locArray[
-            firstMark + random_mt.random<unsigned int>() % range_size
-        ];
+        Location ret_loc = locArray[firstMark + random() % range_size];
 
         // update loadStoreMap
         LdStMap::iterator it = loadStoreMap.find(ret_loc);

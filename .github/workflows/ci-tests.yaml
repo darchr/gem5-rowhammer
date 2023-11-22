@@ -14,32 +14,14 @@ concurrency:
 jobs:
     pre-commit:
     # runs on github hosted runner
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> misc: Copy .github directory from develop to stable (#458)
         runs-on: ubuntu-22.04
         if: github.event.pull_request.draft == false
         steps:
             - uses: actions/checkout@v3
             - uses: actions/setup-python@v3
             - uses: pre-commit/action@v3.0.0
-<<<<<<< HEAD
-=======
-    runs-on: ubuntu-22.04
-    if: github.event.pull_request.draft == false
-    steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v3
-    - uses: pre-commit/action@v3.0.0
->>>>>>> misc: Copy .github directory from develop to stable
 
   # ensures we have a change-id in every commit, needed for gerrit
-<<<<<<< HEAD
-=======
-
-  # ensures we have a change-id in every commit, needed for gerrit
->>>>>>> misc: Copy .github directory from develop to stable (#458)
     check-for-change-id:
         # runs on github hosted runner
         runs-on: ubuntu-22.04
@@ -107,7 +89,6 @@ jobs:
             build-matrix: ${{ steps.build-matrix.outputs.build-matrix }}
             test-dirs-matrix: ${{ steps.dir-matrix.outputs.test-dirs-matrix }}
 
-<<<<<<< HEAD
     clang-fast-compilation:
         # gem5 binaries built in `quick-gem5-builds` always use GCC.
         # Clang is more strict than GCC. This job checks that gem5 compiles
@@ -124,8 +105,6 @@ jobs:
               working-directory: ${{ github.workspace }}
               run: scons build/ALL/gem5.fast -j $(nproc)
 
-=======
->>>>>>> misc: Copy .github directory from develop to stable (#458)
     testlib-quick-gem5-builds:
         runs-on: [self-hosted, linux, x64]
         if: github.event.pull_request.draft == false
@@ -214,103 +193,3 @@ jobs:
         needs: testlib-quick-execution
         steps:
             - run: echo "This job's status is ${{ job.status }}."
-<<<<<<< HEAD
-=======
-  check-for-change-id:
-    # runs on github hosted runner
-    runs-on: ubuntu-22.04
-    if: github.event.pull_request.draft == false
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - name: Check for Change-Id
-        run: |
-          # loop through all the commits in the pull request
-          for commit in $(git rev-list ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}); do
-              git checkout $commit
-              if (git log -1 --pretty=format:"%B" | grep -q "Change-Id: ")
-              then
-                # passes as long as at least one change-id exists in the pull request
-                exit 0
-              fi
-          done
-          # if we reach this part, none of the commits had a change-id
-          echo "None of the commits in this pull request contains a Change-ID, which we require for any changes made to gem5. "\
-            "To automatically insert one, run the following:\n f=`git rev-parse --git-dir`/hooks/commit-msg ; mkdir -p $(dirname $f) ; "\
-            "curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f\n Then amend the commit with git commit --amend --no-edit, and update your pull request."
-          exit 1
-
-  build-gem5:
-    runs-on: [self-hosted, linux, x64, build]
-    if: github.event.pull_request.draft == false
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [pre-commit, check-for-change-id] # only runs if pre-commit and change-id passes
-    outputs:
-      artifactname: ${{ steps.name.outputs.test }}
-    steps:
-      - uses: actions/checkout@v3
-      - id: name
-        run: echo "test=$(date +"%Y-%m-%d_%H.%M.%S")-artifact" >> $GITHUB_OUTPUT
-
-      - name: Build gem5
-        run: |
-          scons build/ALL/gem5.opt -j $(nproc)
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ${{ steps.name.outputs.test }}
-          path: build/ALL/gem5.opt
-      - run: echo "This job's status is ${{ job.status }}."
-
-  unittests-all-opt:
-    runs-on: [self-hosted, linux, x64, run]
-    if: github.event.pull_request.draft == false
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [pre-commit, check-for-change-id] # only runs if pre-commit and change-id passes
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-      - name: CI Unittests
-        working-directory: ${{ github.workspace }}
-        run: scons build/ALL/unittests.opt -j $(nproc)
-      - run: echo "This job's status is ${{ job.status }}."
-
-  testlib-quick:
-    runs-on: [self-hosted, linux, x64, run]
-    if: github.event.pull_request.draft == false
-    container: gcr.io/gem5-test/ubuntu-22.04_all-dependencies:latest
-    needs: [pre-commit, build-gem5, check-for-change-id]
-    timeout-minutes: 360     # 6 hours
-    steps:
-      - name: Clean runner
-        run:
-          rm -rf ./* || true
-          rm -rf ./.??* || true
-          rm -rf ~/.cache || true
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-        with:
-          name: ${{needs.build-gem5.outputs.artifactname}}
-          path: build/ALL
-      - run: chmod u+x build/ALL/gem5.opt
-      - name: The TestLib CI Tests
-        working-directory: ${{ github.workspace }}/tests
-        run: ./main.py run --skip-build -vv
-      - name: create zip of results
-        if: success() || failure()
-        run: |
-          apt-get -y install zip
-          zip -r output.zip tests/testing-results
-      - name: upload zip
-        if: success() || failure()
-        uses: actions/upload-artifact@v3
-        env:
-          MY_STEP_VAR: ${{github.job}}_COMMIT.${{github.sha}}_RUN.${{github.run_id}}_ATTEMPT.${{github.run_attempt}}
-        with:
-          name: ${{ env.MY_STEP_VAR }}
-          path: output.zip
-          retention-days: 7
-      - run: echo "This job's status is ${{ job.status }}."
->>>>>>> misc: Add ".github" changes to minor release
-=======
->>>>>>> misc: Copy .github directory from develop to stable (#458)

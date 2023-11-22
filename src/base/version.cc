@@ -32,14 +32,6 @@ namespace gem5
 /**
  * @ingroup api_base_utils
  */
-<<<<<<< HEAD
-<<<<<<< HEAD
-const char *gem5Version = "DEVELOP-FOR-23.1";
-=======
-const char *gem5Version = "23.0.0.1";
->>>>>>> misc: Update version to v23.0.0.1
-=======
 const char *gem5Version = "23.0.1.0";
->>>>>>> misc: Update version to v23.0.1.0
 
 } // namespace gem5
