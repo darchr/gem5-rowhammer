@@ -555,6 +555,7 @@ class DRAMInterface : public MemInterface
     bool first_act = false;
     uint64_t para_refreshes;
     const bool rhStatDump;
+    std::string rhStatFile;
 
     enums::PageManage pageMgmt;
     /**

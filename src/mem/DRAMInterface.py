@@ -116,6 +116,10 @@ class DRAMInterface(MemInterface):
         "named as `rowhammer.trace`",
     )
 
+    rh_stat_file = Param.String(
+        "m5out/rowhammer.trace", "output path of the rowhammer trace"
+    )
+
     # Single-sided rowhammer probability.
     single_sided_prob = Param.Unsigned(
         1e7,
