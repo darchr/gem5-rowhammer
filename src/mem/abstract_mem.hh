@@ -345,7 +345,7 @@ class AbstractMemory : public ClockedObject
      *
      * @param pkt Packet performing the access
      */
-    void access(PacketPtr pkt);
+    void access(PacketPtr pkt, bool corruptedAccess = false);
 
     /**
      * Perform an untimed memory read or write without changing

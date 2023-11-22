@@ -34,6 +34,11 @@ protobuf if you want trace capture and playback support. Please see
 <http://www.gem5.org/documentation/general_docs/building> for more details
 concerning the minimum versions of these tools.
 
+### Compiling HammerSim
+
+HammerSim has the following dependencies:
+* json: `ext/json`. Follow the `README` in `ext/json` to compile json.
+
 Once you have all dependencies resolved, execute
 `scons build/ALL/gem5.opt` to build an optimized version of the gem5 binary
 (`gem5.opt`) containing all gem5 ISAs. If you only wish to compile gem5 to
@@ -58,6 +63,10 @@ The main source tree includes these subdirectories:
 * system: source for some optional system software for simulated systems
 * tests: regression tests
 * util: useful utility programs and files
+
+## Using HammerSim
+
+Please see `README-RH.md`.
 
 ## gem5 Resources
 

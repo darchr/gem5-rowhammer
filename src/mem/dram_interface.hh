@@ -527,6 +527,35 @@ class DRAMInterface : public MemInterface
     const Tick wrToRdDlySameBG;
     const Tick rdToWrDlySameBG;
 
+    // hammersim
+
+    //AYAZ: Rowhammer activation threshold
+    const uint32_t rowhammerThreshold;
+
+    //AYAZ: the path to the device file with
+    // the information on weak columns
+    std::string deviceFile;
+    nlohmann::json device_map;
+
+    //AYAZ: Rowhammer refresh counter
+    int refreshCounter = 0;
+
+    // kg: changes here
+    const uint32_t counterTableLength;
+    const uint32_t trrVariant;
+    const uint32_t trrThreshold;
+    const uint32_t companionTableLength;
+    const uint32_t companionThreshold;
+
+    const uint64_t singleSidedProb;
+    const uint64_t halfDoubleProb;
+    const uint64_t doubleSidedProb;
+
+    uint64_t num_trr_refreshes = 0;
+    bool first_act = false;
+    uint64_t para_refreshes;
+    const bool rhStatDump;
+    std::string rhStatFile;
 
     enums::PageManage pageMgmt;
     /**
@@ -560,6 +589,24 @@ class DRAMInterface : public MemInterface
      */
     void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
                       uint32_t row);
+
+    /**
+     * Keep track of possible corruption in neighbouring rows
+     *
+     * @param bank_ref Reference to the bank
+     * @param row Index of the row
+     */
+    void updateVictims(Bank& bank_ref, uint32_t row);
+
+    /**
+     * Check if the current access is
+     * going to lead to corrupted data
+     * @param bank_ref Reference to the bank
+     * @param row Index of the row
+     * @param col index of the column in the row
+     */
+    void checkRowHammer(Bank& bank_ref, MemPacket* mem_pkt);
+
 
     /**
      * Precharge a given bank and also update when the precharge is
