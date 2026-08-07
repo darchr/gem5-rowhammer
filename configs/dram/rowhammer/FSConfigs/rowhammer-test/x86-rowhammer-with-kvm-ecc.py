@@ -118,11 +118,17 @@ memory._dram_class.ranks_per_channel = 1
 memory._dram_class.rh_stat_dump = False
 memory._dram_class.half_double_prob = 1e10
 # Double sided rowhammre should always be lower.
-memory._dram_class.double_sided_prob = 1e5
+memory._dram_class.double_sided_prob = 1e10
 # Rowhammer test performs single sided attacks
 memory._dram_class.single_sided_prob = float(args.single_sided)
 # Enable memory corruption
 memory._dram_class.enable_memory_corruption = True
+
+# Enable ECC
+memory._dram_class.enable_ecc = True
+memory._dram_class.p_matrix = os.path.join(os.getcwd(),
+                                           "util/hammersim/pMatrix.txt")
+memory._dram_class.ecc_algorithm = 1
 
 # Here we setup the processor. This is a special switchable processor in which
 # a starting core type and a switch core type must be specified. Once a
@@ -133,7 +139,7 @@ memory._dram_class.enable_memory_corruption = True
 processor = SimpleSwitchableProcessor(
     starting_core_type=CPUTypes.KVM,
     switch_core_type=CPUTypes.TIMING,
-    num_cores=1,
+    num_cores=2,
     isa=ISA.X86
 )
 

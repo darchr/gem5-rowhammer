@@ -123,6 +123,11 @@ memory._dram_class.double_sided_prob = 1e5
 memory._dram_class.single_sided_prob = float(args.single_sided)
 # Enable memory corruption
 memory._dram_class.enable_memory_corruption = True
+# Enable ECC
+memory._dram_class.enable_ecc = True
+memory._dram_class.p_matrix = os.path.join(os.getcwd(),
+                                           "util/hammersim/pMatrix.txt")
+memory._dram_class.ecc_algorithm = 1
 
 # Here we setup the processor. This is a special switchable processor in which
 # a starting core type and a switch core type must be specified. Once a
