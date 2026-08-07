@@ -297,16 +297,6 @@ board.set_kernel_disk_workload(
 
 Scripts to run `rowhammer-test` is located in `configs/dram/rowhammer/FSConfigs/rowhammer-test/x86-rowhammer-with-kvm.py` (and there is a no cache version).
 
-#### Reproducing results from the paper
-
-We simulated bit corruptions on two of the three major DRAM vendors.
-Hammering patterns on real systems were found using Blacksmith ().
-We then created gem5 traffic generators to replay the same RowHammer attack on gem5.
-Scripts to run these scripts can be found at `configs/dram/rowhammer/TrafficGen/vendor-*`.
-
-TODO
-
-
 ## More Information
 
 More on HammerSim can be found here: https://arch.cs.ucdavis.edu/memory/simulation/security/2023/03/20/yarch-hammersim.html
